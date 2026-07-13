@@ -1,0 +1,293 @@
+import os
+import shutil
+import uuid
+import logging
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+from typing import List
+
+# Dynamic static-ffmpeg path registration for Windows platforms
+try:
+    import static_ffmpeg
+    static_ffmpeg.add_paths()
+except Exception as e:
+    import logging
+    logging.getLogger(__name__).warning(f"Could not initialize static-ffmpeg: {e}")
+
+# Database & Config
+from backend.app.config import settings
+from backend.app.database import engine, Base, get_db
+from backend.app.models.concept import ReferenceConcept
+from backend.app.models.evaluation import Evaluation
+from backend.app.schemas.concept import ConceptCreate, ConceptResponse
+from backend.app.schemas.evaluation import EvaluationResponse
+
+# Services
+from backend.app.services.speech_to_text import transcribe_audio
+from backend.app.services.audio_analysis import analyze_audio_features
+from backend.app.services.semantic import evaluate_semantic_understanding
+from backend.app.services.evaluation import compute_fluency_score, evaluate_explanation
+from backend.app.services.pdf_report import generate_pdf_report
+
+# Configure Logger
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Initialize FastAPI App
+app = FastAPI(
+    title="VBCUA API",
+    description="Backend API for Voice-Based Concept Understanding Analyser",
+    version="1.0.0"
+)
+
+# CORS configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Database Startup Actions
+@app.on_event("startup")
+def startup_db_setup():
+    logger.info("Initializing database and tables...")
+    Base.metadata.create_all(bind=engine)
+    
+    # Dynamic database migration for existing tables (adds final_score if missing)
+    db = next(get_db())
+    try:
+        # Check if column exists by querying it
+        db.execute(text("SELECT final_score FROM evaluations LIMIT 1"))
+    except Exception:
+        db.rollback()
+        logger.info("Database migration: final_score column missing. Appending it...")
+        try:
+            db.execute(text("ALTER TABLE evaluations ADD COLUMN final_score FLOAT DEFAULT 0.0"))
+            db.commit()
+            logger.info("Database migration: final_score column successfully added.")
+        except Exception as err:
+            logger.error(f"Failed to add final_score column: {err}")
+    finally:
+        db.close()
+    
+    # Seed default concepts if table is empty
+    db = next(get_db())
+    try:
+        if db.query(ReferenceConcept).count() == 0:
+            logger.info("Seeding default reference concepts...")
+            default_concepts = [
+                ReferenceConcept(
+                    title="Machine Learning",
+                    keywords=["supervised", "unsupervised", "data", "algorithms", "patterns", "predictions", "training"],
+                    description="Machine Learning is a subset of artificial intelligence that focuses on building systems that learn from data. It involves training algorithms on large datasets so that the system can recognize patterns and make predictions or decisions without being explicitly programmed. The main types of machine learning are supervised learning, where models learn from labeled data, unsupervised learning, where models find hidden patterns in unlabeled data, and reinforcement learning, which uses a system of rewards and penalties."
+                ),
+                ReferenceConcept(
+                    title="Cloud Computing",
+                    keywords=["internet", "servers", "storage", "databases", "on-demand", "infrastructure", "scalability"],
+                    description="Cloud Computing is the on-demand delivery of computing services over the internet, including servers, storage, databases, networking, software, and analytics. Instead of buying and maintaining physical data centers and servers, organizations can access technology services on an as-needed basis from cloud providers like AWS, Microsoft Azure, or Google Cloud. This provides flexibility, scalability, and cost savings, allowing businesses to scale their infrastructure dynamically."
+                ),
+                ReferenceConcept(
+                    title="Database Management System (DBMS)",
+                    keywords=["database", "sql", "query", "tables", "integrity", "transactions", "storage", "relational"],
+                    description="A Database Management System (DBMS) is software designed to store, retrieve, define, and manage data in a database. It serves as an interface between the database and its end-users or programs, ensuring that data is consistently organized and easily accessible. A DBMS enforces data integrity constraints, manages database transactions, supports querying languages like SQL, and handles concurrent access control so multiple users can access the database safely without conflicts."
+                )
+            ]
+            db.add_all(default_concepts)
+            db.commit()
+            logger.info("Seeding complete.")
+    except Exception as e:
+        logger.error(f"Error seeding database: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
+# --- API Routes ---
+
+@app.get("/")
+def read_root():
+    return {"message": "Welcome to the Voice-Based Concept Understanding Analyser API!"}
+
+
+# 1. Reference Concept Endpoints
+
+@app.post("/api/concepts", response_model=ConceptResponse)
+def create_concept(concept: ConceptCreate, db: Session = Depends(get_db)):
+    db_concept = db.query(ReferenceConcept).filter(ReferenceConcept.title == concept.title).first()
+    if db_concept:
+        raise HTTPException(status_code=400, detail="Concept with this title already exists")
+    
+    new_concept = ReferenceConcept(
+        title=concept.title,
+        keywords=concept.keywords,
+        description=concept.description
+    )
+    db.add(new_concept)
+    db.commit()
+    db.refresh(new_concept)
+    return new_concept
+
+
+@app.get("/api/concepts", response_model=List[ConceptResponse])
+def list_concepts(db: Session = Depends(get_db)):
+    return db.query(ReferenceConcept).order_by(ReferenceConcept.title).all()
+
+
+@app.get("/api/concepts/{concept_id}", response_model=ConceptResponse)
+def get_concept(concept_id: int, db: Session = Depends(get_db)):
+    concept = db.query(ReferenceConcept).filter(ReferenceConcept.id == concept_id).first()
+    if not concept:
+        raise HTTPException(status_code=404, detail="Concept not found")
+    return concept
+
+
+# 2. Evaluation Endpoints
+
+@app.post("/api/evaluate", response_model=EvaluationResponse)
+def evaluate_audio(
+    concept_id: int = Form(...),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    # Retrieve Reference Concept
+    concept = db.query(ReferenceConcept).filter(ReferenceConcept.id == concept_id).first()
+    if not concept:
+        raise HTTPException(status_code=404, detail="Reference concept not found")
+
+    # Save Uploaded Audio File
+    file_ext = os.path.splitext(file.filename)[1] or ".wav"
+    unique_filename = f"{uuid.uuid4()}{file_ext}"
+    audio_path = os.path.join(settings.UPLOAD_DIR, unique_filename)
+    
+    try:
+        with open(audio_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        logger.error(f"Failed to save uploaded file: {e}")
+        raise HTTPException(status_code=500, detail="Could not save uploaded audio file")
+
+    # Evaluation Pipeline
+    try:
+        # Step A: Speech-to-Text Transcription
+        transcription = transcribe_audio(audio_path)
+        if not transcription.strip():
+            # If transcription is empty
+            transcription = "[No speech detected or transcription failed]"
+        
+        logger.info(f"Audio transcription complete: {transcription[:100]}...")
+
+        # Step B: Audio Signal Analysis
+        audio_metrics = analyze_audio_features(audio_path, transcription)
+        logger.info(f"Audio features extraction complete: {audio_metrics}")
+
+        # Step C: Semantic Analysis
+        semantic_metrics = evaluate_semantic_understanding(
+            user_transcript=transcription,
+            reference_description=concept.description,
+            keywords=concept.keywords
+        )
+        logger.info(f"Semantic similarity calculated: {semantic_metrics['similarity_score']}%")
+
+        # Step D: Fluency Analysis
+        fluency_metrics = compute_fluency_score(
+            filler_words_ratio=audio_metrics["filler_words_ratio"],
+            pause_ratio=audio_metrics["pause_ratio"],
+            rms_energy=audio_metrics["rms_energy"]
+        )
+        logger.info(f"Fluency score calculated: {fluency_metrics['fluency_score']}/100")
+
+        # Step E: Integrated Evaluation & Grading
+        evaluation_result = evaluate_explanation(
+            concept_title=concept.title,
+            reference_description=concept.description,
+            user_transcript=transcription,
+            semantic_result=semantic_metrics,
+            fluency_result=fluency_metrics
+        )
+        logger.info(f"Overall grade: {evaluation_result['understanding_grade']} ({evaluation_result['final_score']}%)")
+
+        # Save to Database
+        db_evaluation = Evaluation(
+            concept_id=concept_id,
+            transcription=transcription,
+            semantic_score=semantic_metrics["similarity_score"],
+            filler_words_count=audio_metrics["filler_words_count"],
+            filler_words_ratio=audio_metrics["filler_words_ratio"],
+            pause_ratio=audio_metrics["pause_ratio"],
+            rms_energy=audio_metrics["rms_energy"],
+            speech_duration=audio_metrics["duration"],
+            final_score=evaluation_result["final_score"],
+            understanding_grade=evaluation_result["understanding_grade"],
+            feedback=evaluation_result["feedback"],
+            audio_path=audio_path
+        )
+        db.add(db_evaluation)
+        db.commit()
+        db.refresh(db_evaluation)
+        
+        # Populate relationships for Pydantic response serialization
+        # Just loading the concept relationship
+        _ = db_evaluation.concept
+        
+        return db_evaluation
+
+    except Exception as e:
+        logger.error(f"Error executing evaluation pipeline: {e}", exc_info=True)
+        # Clean up audio file on failure
+        if os.path.exists(audio_path):
+            try:
+                os.remove(audio_path)
+            except Exception as cleanup_err:
+                logger.error(f"Failed to clean up file {audio_path}: {cleanup_err}")
+        raise HTTPException(status_code=500, detail=f"Evaluation failed: {str(e)}")
+
+
+@app.get("/api/evaluations", response_model=List[EvaluationResponse])
+def list_evaluations(db: Session = Depends(get_db)):
+    return db.query(Evaluation).order_by(Evaluation.created_at.desc()).all()
+
+
+@app.get("/api/evaluations/{eval_id}", response_model=EvaluationResponse)
+def get_evaluation(eval_id: int, db: Session = Depends(get_db)):
+    evaluation = db.query(Evaluation).filter(Evaluation.id == eval_id).first()
+    if not evaluation:
+        raise HTTPException(status_code=404, detail="Evaluation not found")
+    return evaluation
+
+
+@app.get("/api/evaluations/{eval_id}/pdf")
+def download_pdf(eval_id: int, db: Session = Depends(get_db)):
+    evaluation = db.query(Evaluation).filter(Evaluation.id == eval_id).first()
+    if not evaluation:
+        raise HTTPException(status_code=404, detail="Evaluation not found")
+    
+    concept = db.query(ReferenceConcept).filter(ReferenceConcept.id == evaluation.concept_id).first()
+    concept_title = concept.title if concept else "Concept"
+    
+    # Generate unique PDF filename
+    pdf_filename = f"report_{eval_id}_{uuid.uuid4().hex[:6]}.pdf"
+    pdf_path = os.path.join(settings.UPLOAD_DIR, pdf_filename)
+    
+    try:
+        generate_pdf_report(
+            evaluation=evaluation,
+            concept_title=concept_title,
+            output_path=pdf_path
+        )
+        
+        if not os.path.exists(pdf_path):
+            raise HTTPException(status_code=500, detail="PDF generation failed")
+            
+        return FileResponse(
+            path=pdf_path,
+            filename=f"VBCUA_Report_{concept_title.replace(' ', '_')}_{eval_id}.pdf",
+            media_type="application/pdf"
+        )
+    except Exception as e:
+        logger.error(f"Error generating or downloading PDF: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {e}")

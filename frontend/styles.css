@@ -1,0 +1,381 @@
+/* Sleek, Enterprise-Grade Dark Mode Design System */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+/* Apply modern typography */
+html, body, [class*="css"], .stMarkdown {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    letter-spacing: -0.01em;
+}
+
+h1, h2, h3, h4, h5, h6, .neon-title {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    letter-spacing: -0.02em;
+}
+
+/* Background gradient for the entire page */
+.stApp {
+    background: radial-gradient(circle at top left, #0e1320, #0a0c10 70%) !important;
+    background-attachment: fixed !important;
+    color: #f8fafc !important;
+}
+
+/* Sidebar styling */
+[data-testid="stSidebar"] {
+    background-color: #090b0f !important;
+    border-right: 1px solid rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Sidebar typography & hierarchy overrides */
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] button,
+[data-testid="stSidebar"] select,
+[data-testid="stSidebar"] input,
+[data-testid="stSidebar"] textarea,
+[data-testid="stSidebar"] .stMarkdown,
+[data-testid="stSidebar"] .stMarkdown p {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+}
+
+[data-testid="stSidebar"] h1, 
+[data-testid="stSidebar"] h2, 
+[data-testid="stSidebar"] h3, 
+[data-testid="stSidebar"] h4,
+[data-testid="stSidebar"] strong {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    color: #ffffff !important;
+}
+
+/* Sidebar descriptions and secondary text */
+[data-testid="stSidebar"] p, 
+[data-testid="stSidebar"] .stMarkdown p {
+    color: #94a3b8 !important; /* Soft Slate grey for description body */
+    line-height: 1.5 !important;
+    font-size: 0.9rem !important;
+}
+
+[data-testid="stSidebar"] label {
+    color: #e2e8f0 !important; /* Clearer labels */
+    font-weight: 500 !important;
+}
+
+/* Custom badge-indigo class */
+.badge-indigo {
+    background-color: rgba(99, 102, 241, 0.08) !important;
+    color: #a5b4fc !important;
+    border: 1px solid rgba(99, 102, 241, 0.2) !important;
+}
+
+/* Premium Card Containers */
+.glass-card, [data-testid="stVerticalBlockBorderWrapper"] {
+    background: rgba(15, 23, 42, 0.35) !important; /* slate-900 transparent */
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    border-radius: 12px !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.4) !important;
+    padding: 24px !important;
+    margin-bottom: 20px !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.glass-card:hover, [data-testid="stVerticalBlockBorderWrapper"]:hover {
+    border-color: rgba(99, 102, 241, 0.2) !important; /* Indigo border glow */
+    box-shadow: 0 10px 40px -10px rgba(99, 102, 241, 0.15) !important;
+}
+
+/* Elegant Title Header */
+.neon-title {
+    font-size: 2.5rem !important;
+    font-weight: 800 !important;
+    background: linear-gradient(135deg, #ffffff 40%, #c7d2fe 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    text-align: center;
+    margin-top: 15px !important;
+    margin-bottom: 5px !important;
+}
+
+.neon-subtitle {
+    font-size: 0.95rem !important;
+    color: #94a3b8 !important;
+    text-align: center;
+    margin-bottom: 35px !important;
+    font-weight: 400 !important;
+    letter-spacing: 0.5px !important;
+}
+
+/* Sophisticated Metric Cards */
+.metric-box {
+    text-align: center;
+    padding: 18px 10px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.01);
+    border: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.metric-box.blue {
+    border-color: rgba(59, 130, 246, 0.12) !important;
+    background: rgba(59, 130, 246, 0.01) !important;
+}
+.metric-box.purple {
+    border-color: rgba(99, 102, 241, 0.12) !important;
+    background: rgba(99, 102, 241, 0.01) !important;
+}
+.metric-box.green {
+    border-color: rgba(16, 185, 129, 0.12) !important;
+    background: rgba(16, 185, 129, 0.01) !important;
+}
+
+.metric-label {
+    font-size: 0.72rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1.5px !important;
+    color: #94a3b8 !important;
+    margin-bottom: 6px !important;
+    font-weight: 600 !important;
+}
+
+.metric-value {
+    font-size: 1.8rem !important;
+    font-weight: 700 !important;
+    color: #ffffff !important;
+}
+
+.metric-value.blue {
+    color: #60a5fa !important;
+    text-shadow: 0 0 15px rgba(59, 130, 246, 0.15);
+}
+
+.metric-value.purple {
+    color: #818cf8 !important;
+    text-shadow: 0 0 15px rgba(99, 102, 241, 0.15);
+}
+
+.metric-value.green {
+    color: #34d399 !important;
+    text-shadow: 0 0 15px rgba(16, 185, 129, 0.15);
+}
+
+/* Custom Badges */
+.badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 6px !important;
+    font-size: 0.75rem !important;
+    font-weight: 600 !important;
+    margin: 4px;
+}
+
+.badge-success {
+    background-color: rgba(16, 185, 129, 0.08) !important;
+    color: #34d399 !important;
+    border: 1px solid rgba(16, 185, 129, 0.2) !important;
+}
+
+.badge-danger {
+    background-color: rgba(244, 63, 94, 0.08) !important;
+    color: #fb7185 !important;
+    border: 1px solid rgba(244, 63, 94, 0.2) !important;
+}
+
+/* Premium Button Styles */
+.stButton>button, .stDownloadButton>button {
+    background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%) !important; /* Royal Indigo to Classic Cobalt */
+    color: #ffffff !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    padding: 10px 24px !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.2px !important;
+    transition: all 0.2s ease !important;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2) !important;
+    width: 100% !important;
+}
+
+.stButton>button:hover, .stDownloadButton>button:hover {
+    transform: translateY(-1px) !important;
+    box-shadow: 0 6px 16px rgba(79, 70, 229, 0.35) !important;
+    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%) !important;
+}
+
+/* Glassmorphic Input Controls */
+div[data-baseweb="input"] input, div[data-baseweb="textarea"] textarea {
+    background-color: rgba(255, 255, 255, 0.02) !important;
+    color: #ffffff !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 8px !important;
+}
+
+div[data-baseweb="input"] input:focus, div[data-baseweb="textarea"] textarea:focus {
+    border-color: rgba(99, 102, 241, 0.4) !important;
+    box-shadow: 0 0 10px rgba(99, 102, 241, 0.15) !important;
+}
+
+/* Dropdown select box styling */
+div[data-baseweb="select"] {
+    background-color: rgba(255, 255, 255, 0.02) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 8px !important;
+}
+
+div[data-baseweb="select"] > div {
+    background-color: transparent !important;
+    color: #ffffff !important;
+}
+
+/* File Uploader styling & contrast enhancements */
+[data-testid="stFileUploader"] {
+    background-color: rgba(15, 23, 42, 0.2) !important;
+    backdrop-filter: blur(8px) !important;
+    border: 1px dashed rgba(255, 255, 255, 0.08) !important;
+    border-radius: 12px !important;
+    padding: 15px !important;
+    transition: all 0.3s ease !important;
+}
+
+[data-testid="stFileUploader"]:hover {
+    border-color: rgba(99, 102, 241, 0.3) !important;
+    background-color: rgba(15, 23, 42, 0.3) !important;
+}
+
+[data-testid="stFileUploader"] section {
+    background-color: transparent !important;
+}
+
+/* File uploader internal text colors for visibility */
+[data-testid="stFileUploader"] * {
+    color: #e2e8f0 !important;
+}
+
+/* File uploader button styling (replaces default white/white button) */
+[data-testid="stFileUploader"] button {
+    background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%) !important;
+    color: #ffffff !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 8px !important;
+    padding: 8px 16px !important;
+    font-weight: 600 !important;
+    transition: all 0.2s ease !important;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2) !important;
+}
+
+[data-testid="stFileUploader"] button:hover {
+    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%) !important;
+    transform: translateY(-1px) !important;
+}
+
+[data-testid="stFileUploader"] button * {
+    color: #ffffff !important;
+}
+
+/* Global label typography contrast fixes */
+label, [data-testid="stWidgetLabel"] p {
+    color: #cbd5e1 !important;
+    font-weight: 500 !important;
+}
+
+/* Premium Table Styling */
+table {
+    border-radius: 12px !important;
+    overflow: hidden !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+    background: rgba(15, 23, 42, 0.3) !important;
+    backdrop-filter: blur(8px) !important;
+}
+
+th {
+    background: rgba(79, 70, 229, 0.08) !important;
+    color: #f1f5f9 !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    font-size: 0.75rem !important;
+    letter-spacing: 1px !important;
+    border-bottom: 1px solid rgba(79, 70, 229, 0.15) !important;
+    padding: 12px 10px !important;
+}
+
+td {
+    padding: 12px 10px !important;
+    vertical-align: middle !important;
+}
+
+tr {
+    transition: background 0.2s ease !important;
+}
+
+tr:hover {
+    background: rgba(255, 255, 255, 0.02) !important;
+}
+
+/* Custom styles for Streamlit Expanders */
+details[data-testid="stExpander"] {
+    background-color: rgba(15, 23, 42, 0.3) !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+    border-radius: 8px !important;
+    margin-bottom: 12px !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+    overflow: hidden !important;
+}
+
+details[data-testid="stExpander"] summary {
+    background-color: rgba(255, 255, 255, 0.01) !important;
+    color: #ffffff !important;
+    font-weight: 500 !important;
+    padding: 10px 14px !important;
+    transition: all 0.2s ease !important;
+}
+
+details[data-testid="stExpander"] summary:hover {
+    background-color: rgba(255, 255, 255, 0.03) !important;
+}
+
+details[data-testid="stExpander"] summary * {
+    color: #ffffff !important;
+}
+
+details[data-testid="stExpander"] > div {
+    background-color: rgba(0, 0, 0, 0.2) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.03) !important;
+    padding: 16px !important;
+}
+
+/* Custom styling for status / info boxes */
+.stAlert {
+    background-color: rgba(15, 23, 42, 0.6) !important;
+    border: 1px solid rgba(255, 255, 255, 0.04) !important;
+    border-radius: 12px !important;
+    color: #cbd5e1 !important;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(10, 12, 16, 0.95);
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+/* Hide/Make transparent default Streamlit top header bar and decoration line */
+header[data-testid="stHeader"], [data-testid="stHeader"] {
+    background-color: transparent !important;
+    background: transparent !important;
+    border-bottom: none !important;
+}
+
+[data-testid="stDecoration"] {
+    display: none !important;
+}
+
