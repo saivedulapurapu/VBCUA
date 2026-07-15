@@ -2,6 +2,11 @@
 
 VBCUA is an AI-powered web application designed to evaluate how effectively users understand and explain conceptual topics through spoken communication. The platform combines speech-to-text transcription, semantic similarity analysis, audio feature extraction, and intelligent scoring mechanisms to assess both the quality of conceptual understanding and the fluency of speech delivery.
 
+## Demo & Project Links
+- Project Demonstration Video: [Google Drive](https://drive.google.com/file/d/1en8HLZQfWnESEw4s4gTvV9vfchR6EO77/view?usp=drivesdk)
+- Code Demonstration Video: [Google Drive](https://drive.google.com/file/d/1V5h2Jw1n2WLrSlF-aw7fje6Yl8zbspC7/view?usp=drivesdk)
+- GitHub Repository: [VBCUA on GitHub](https://github.com/saivedulapurapu/VBCUA)
+
 ---
 
 ## Key Features
