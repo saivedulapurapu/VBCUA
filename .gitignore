@@ -135,4 +135,6 @@ vbcua.db
 uploads/*
 !uploads/.gitkeep
 *.pdf
+!VBCUA_Documents/**/*.pdf
 test_report.pdf
+
