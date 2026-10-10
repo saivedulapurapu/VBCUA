@@ -189,3 +189,72 @@ def test_results_escape_transcript(backend):
     text = all_text(run(session={"current_evaluation": attempt(transcription="<script>alert(1)</script>")}))
     assert "<script>alert" not in text
     assert "&lt;script&gt;" in text
+
+
+# --- AI feedback loaded after the scores ---
+
+@pytest.fixture
+def feedback_api(backend, monkeypatch):
+    state = {"requests": [], "gets": 0, "request_result": None, "get_results": [], "error": None}
+
+    def request_feedback(eval_id):
+        state["requests"].append(eval_id)
+        if state["error"]:
+            raise state["error"]
+        return state["request_result"]
+
+    def get_evaluation(eval_id):
+        state["gets"] += 1
+        return state["get_results"].pop(0)
+
+    monkeypatch.setattr(api, "request_feedback", request_feedback)
+    monkeypatch.setattr(api, "get_evaluation", get_evaluation)
+    return state
+
+
+def done(**kw):
+    return attempt(feedback="#### Suggestions\nAI says hi", feedback_source="llm", feedback_status="done",
+                   llm_model="gemini-3.5-flash-lite", feedback_seconds=4.7, **kw)
+
+
+def test_pending_feedback_is_requested_and_shown(feedback_api):
+    feedback_api["request_result"] = done()
+    at = run(session={"current_evaluation": attempt(feedback_source="rule-based", feedback_status="pending", llm_model=None)})
+    assert feedback_api["requests"] == [7]
+    assert at.session_state["current_evaluation"]["feedback_source"] == "llm"
+    assert "AI says hi" in all_text(at)
+    assert "rule-based generator" not in all_text(at)
+
+
+def test_feedback_generating_elsewhere_is_polled_not_requested_again(feedback_api, monkeypatch):
+    feedback_api["request_result"] = attempt(feedback_source="rule-based", feedback_status="generating")
+    feedback_api["get_results"] = [done()]
+    import time as time_module
+    monkeypatch.setattr(time_module, "sleep", lambda s: None)
+    at = run(session={"current_evaluation": attempt(feedback_source="rule-based", feedback_status="generating")})
+    assert feedback_api["requests"] == [7]  # one request; then it waits on GET
+    assert feedback_api["gets"] == 1
+    assert "AI says hi" in all_text(at)
+
+
+def test_done_feedback_is_not_requested(feedback_api):
+    run(session={"current_evaluation": done()})
+    assert feedback_api["requests"] == []
+
+
+def test_failed_feedback_offers_retry(feedback_api):
+    failed = attempt(feedback="Rule-based text", feedback_source="rule-based", feedback_status="failed", llm_model=None)
+    at = run(session={"current_evaluation": failed})
+    assert feedback_api["requests"] == []
+    assert "could not be generated" in all_text(at)
+    feedback_api["request_result"] = done()
+    retry = next(b for b in at.button if b.label == "Try AI feedback again")
+    retry.click().run()
+    assert feedback_api["requests"] == [7]
+    assert "AI says hi" in all_text(at)
+
+
+def test_feedback_request_error_is_friendly(feedback_api):
+    feedback_api["error"] = api.BackendError("Cannot reach the analysis server.", "ConnectionError")
+    at = run(session={"current_evaluation": attempt(feedback_source="rule-based", feedback_status="pending", llm_model=None)})
+    assert any("Cannot reach the analysis server" in e.value for e in at.error)

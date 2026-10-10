@@ -96,12 +96,26 @@ def history_rows(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return rows
 
 
+FEEDBACK_IN_PROGRESS = ("pending", "generating")
+
+
+def feedback_in_progress(eval_res: Dict[str, Any]) -> bool:
+    """True while AI feedback for this attempt has not been written yet."""
+    return eval_res.get("feedback_source") != "llm" and eval_res.get("feedback_status") in FEEDBACK_IN_PROGRESS
+
+
 def feedback_notice(eval_res: Dict[str, Any]) -> Any:
-    """Shown when the AI feedback was unavailable and the rule-based generator was used."""
-    if eval_res.get("feedback_source") == "rule-based":
-        return ("AI feedback was unavailable for this attempt (no API key, or the AI service was busy), "
+    """Shown when the rule-based generator wrote the feedback (and AI feedback is not on its way)."""
+    if eval_res.get("feedback_source") != "rule-based" or feedback_in_progress(eval_res):
+        return None
+    status = eval_res.get("feedback_status")
+    if status == "failed":
+        return ("AI feedback could not be generated (the AI service was busy or unavailable), "
                 "so this feedback was produced by the built-in rule-based generator.")
-    return None
+    if status == "unavailable":
+        return "No AI key is configured, so this feedback was produced by the built-in rule-based generator."
+    return ("AI feedback was unavailable for this attempt (no API key, or the AI service was busy), "
+            "so this feedback was produced by the built-in rule-based generator.")
 
 
 # --- Results view helpers ---
@@ -166,6 +180,7 @@ def details_rows(eval_res: Dict[str, Any]) -> List[Dict[str, str]]:
         ("Duration", _fmt(eval_res.get("speech_duration"), 1, " s"), ""),
         ("Speech-to-text model", str(eval_res.get("asr_model") or "n/a"), "ASR confidence " + _fmt(eval_res.get("asr_confidence"), 3)),
         ("Feedback source", str(eval_res.get("feedback_source") or "n/a"), str(eval_res.get("llm_model") or "")),
+        ("Feedback time", _fmt(eval_res.get("feedback_seconds"), 1, " s"), "Time taken by the AI feedback model"),
         ("Scoring methods", f"semantic {eval_res.get('semantic_method') or 'n/a'}, fluency {eval_res.get('fluency_method') or 'n/a'}", "B0 = original baseline"),
     ]
     return [{"Measure": m, "Value": v, "Note": n} for m, v, n in rows]

@@ -11,7 +11,7 @@ import api
 from api import BackendError
 from display import (
     FOUND, MISSING, PLAIN, concept_title as get_concept_title, description_html, details_rows,
-    demote_headings, feedback_notice, grade_badge_color, history_rows, initial_concept_id, keyword_badges,
+    demote_headings, feedback_in_progress, feedback_notice, grade_badge_color, history_rows, initial_concept_id, keyword_badges,
     keyword_badges_html, score_cards, transcript_html,
 )
 
@@ -45,9 +45,22 @@ def show_evaluation(result):
 
 
 @st.cache_data(ttl=600, show_spinner=False)
-def cached_pdf(eval_id: int) -> bytes:
-    """A report never changes once the attempt is saved, so fetch it once per attempt."""
+def cached_pdf(eval_id: int, feedback_source: str) -> bytes:
+    """Fetched once per attempt and feedback version (the report changes when AI feedback arrives)."""
     return api.get_pdf(eval_id)
+
+
+def wait_for_feedback(eval_id: int, max_wait_s: int = 300):
+    """
+    Requests AI feedback, or waits for a request already running elsewhere
+    (the backend never calls Gemini twice for the same attempt).
+    """
+    result = api.request_feedback(eval_id)
+    start = time.time()
+    while result.get("feedback_status") == "generating" and time.time() - start < max_wait_s:
+        time.sleep(3)
+        result = api.get_evaluation(eval_id)
+    return result
 
 
 def step_title(number: int, text: str):
@@ -108,6 +121,10 @@ except BackendError as e:
     concepts, backend_error = [], e
 
 # Restore the attempt shown before a page reload (?attempt=<id>)
+retry_id = st.session_state.pop("feedback_retry", None)
+if retry_id and st.session_state.get("current_evaluation", {}).get("id") == retry_id:
+    st.session_state.current_evaluation = {**st.session_state.current_evaluation, "feedback_status": "pending"}
+
 if "current_evaluation" not in st.session_state and st.query_params.get("attempt"):
     try:
         st.session_state.current_evaluation = api.get_evaluation(int(st.query_params["attempt"]))
@@ -149,6 +166,7 @@ if backend_error:
     show_error(backend_error)
 
 col_input, col_results = st.columns([5, 7], gap="large")
+feedback_slot = None
 
 
 # ---------- Steps 1 and 2: input ----------
@@ -238,7 +256,15 @@ with col_results:
                 ["Feedback", "Keywords", "Transcript", "Details"]
             )
             with tab_feedback:
-                st.markdown(demote_headings(eval_res["feedback"]))
+                if feedback_in_progress(eval_res):
+                    # Filled at the end of the script, after the rest of the page has rendered
+                    feedback_slot = st.empty()
+                    feedback_slot.info("Writing feedback…", icon=":material/edit_note:")
+                else:
+                    st.markdown(demote_headings(eval_res["feedback"]))
+                    if eval_res.get("feedback_status") == "failed" and st.button("Try AI feedback again"):
+                        st.session_state.feedback_retry = eval_res["id"]
+                        st.rerun()
             with tab_keywords:
                 badges = keyword_badges(eval_res)
                 found = sum(1 for _, status in badges if status == FOUND)
@@ -257,7 +283,7 @@ with col_results:
 
             try:
                 st.download_button(
-                    "Download PDF report", data=cached_pdf(eval_res["id"]),
+                    "Download PDF report", data=cached_pdf(eval_res["id"], str(eval_res.get("feedback_source"))),
                     file_name=f"VBCUA_Report_{concept_title.replace(' ', '_')}_{eval_res['id']}.pdf",
                     mime="application/pdf", icon=":material/download:",
                 )
@@ -302,3 +328,19 @@ if history:
     st.session_state.history_selected_id = selected_id
 else:
     st.caption("No attempts yet. Your past attempts will appear here.")
+
+
+# ---------- AI feedback (after the page has rendered, so scores are visible meanwhile) ----------
+
+if feedback_slot is not None:
+    eval_id = st.session_state.current_evaluation["id"]
+    with feedback_slot.container():
+        try:
+            with st.spinner("Writing feedback…"):
+                updated = wait_for_feedback(eval_id)
+        except BackendError as e:
+            updated = None
+            show_error(e)
+    if updated:
+        show_evaluation(updated)
+        st.rerun()

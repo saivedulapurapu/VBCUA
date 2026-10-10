@@ -106,6 +106,9 @@ GEMINI_API_KEY=gemini_api_key_here
 # Gemini model for all LLM calls (see https://ai.google.dev/gemini-api/docs/models)
 GEMINI_MODEL=gemini-3.8-flash
 
+# Gemini model for written feedback (faster; GEMINI_MODEL is used for rubric grading)
+GEMINI_FEEDBACK_MODEL=gemini-3.5-flash-lite
+
 # Gemini thinking effort for feedback (minimal, low, medium, high; empty = model default)
 GEMINI_THINKING_LEVEL=low
 
@@ -160,6 +163,7 @@ python run.py
 | POST | `/api/evaluate` | Upload audio and run the evaluation pipeline |
 | GET | `/api/evaluations` | List past attempts |
 | GET | `/api/evaluations/{eval_id}` | Get one attempt |
+| POST | `/api/evaluations/{eval_id}/feedback` | Generate AI feedback for an attempt (safe to call twice) |
 | GET | `/api/evaluations/{eval_id}/pdf` | Download the PDF report for an attempt |
 
 Interactive documentation is served at `/docs` while the backend is running.

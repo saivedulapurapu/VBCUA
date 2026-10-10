@@ -1,5 +1,6 @@
 import pytest
 
+from backend.app.config import settings
 from backend.app.services import evaluation, llm_client
 
 SEMANTIC = {
@@ -21,54 +22,72 @@ def evaluate():
     )
 
 
+def llm_feedback():
+    return evaluation.generate_llm_feedback("Machine Learning", "reference", "transcript", SEMANTIC, FLUENCY)
+
+
 def rule_based():
     return evaluation.generate_rule_based_feedback("Machine Learning", SEMANTIC, FLUENCY)
 
 
 @pytest.fixture
 def llm(monkeypatch):
-    state = {"configured": True, "calls": 0, "fail": False}
+    state = {"configured": True, "calls": [], "fail": False}
 
     def fake_generate_text(prompt, **kwargs):
-        state["calls"] += 1
+        state["calls"].append(kwargs)
         if state["fail"]:
             raise llm_client.LLMError("api down")
         return "LLM feedback"
 
     monkeypatch.setattr(llm_client, "is_configured", lambda: state["configured"])
     monkeypatch.setattr(llm_client, "generate_text", fake_generate_text)
+    monkeypatch.setattr(settings, "GEMINI_FEEDBACK_MODEL", "feedback-model")
     return state
 
 
-def test_no_key_uses_rule_based_without_calling_llm(llm):
-    llm["configured"] = False
-    assert evaluate()["feedback"] == rule_based()
-    assert llm["calls"] == 0
+# --- evaluate_explanation: scores + rule-based feedback only, never calls the LLM ---
 
-
-def test_llm_failure_falls_back_to_rule_based(llm):
-    llm["fail"] = True
-    assert evaluate()["feedback"] == rule_based()
-    assert llm["calls"] == 1
-
-
-def test_llm_feedback_used_when_available(llm):
-    assert evaluate()["feedback"] == "LLM feedback"
-
-
-def test_feedback_source_no_key(llm):
-    llm["configured"] = False
+def test_evaluate_never_calls_llm(llm):
     result = evaluate()
+    assert llm["calls"] == []
+    assert result["feedback"] == rule_based()
     assert (result["feedback_source"], result["llm_model"]) == ("rule-based", None)
 
 
-def test_feedback_source_llm_failure(llm):
+def test_evaluate_marks_ai_feedback_pending_when_configured(llm):
+    assert evaluate()["feedback_status"] == evaluation.FEEDBACK_PENDING
+
+
+def test_evaluate_marks_ai_feedback_unavailable_without_key(llm):
+    llm["configured"] = False
+    assert evaluate()["feedback_status"] == evaluation.FEEDBACK_UNAVAILABLE
+
+
+def test_scores_unchanged_by_feedback_split(llm):
+    result = evaluate()
+    assert result["final_score"] == pytest.approx(0.7 * 60.0 + 0.3 * 80.0)
+    assert result["understanding_grade"] == "Moderate Understanding"
+
+
+# --- generate_llm_feedback ---
+
+def test_llm_feedback_uses_feedback_model_and_times_call(llm):
+    result = llm_feedback()
+    assert result["feedback"] == "LLM feedback"
+    assert result["llm_model"] == "feedback-model"
+    assert result["feedback_seconds"] >= 0
+    assert llm["calls"] == [{"model": "feedback-model"}]
+
+
+def test_llm_feedback_failure_raises_with_elapsed_time(llm):
     llm["fail"] = True
-    result = evaluate()
-    assert (result["feedback_source"], result["llm_model"]) == ("rule-based", None)
+    with pytest.raises(llm_client.LLMError) as info:
+        llm_feedback()
+    assert info.value.feedback_seconds >= 0
 
 
-def test_feedback_source_llm(llm, monkeypatch):
-    monkeypatch.setattr(llm_client, "model_name", lambda: "gemini-test-model")
-    result = evaluate()
-    assert (result["feedback_source"], result["llm_model"]) == ("llm", "gemini-test-model")
+def test_default_feedback_model_is_flash_lite_and_grader_model_unchanged():
+    fields = type(settings).model_fields
+    assert fields["GEMINI_FEEDBACK_MODEL"].default == "gemini-3.5-flash-lite"
+    assert fields["GEMINI_MODEL"].default == "gemini-3.8-flash"

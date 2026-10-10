@@ -82,3 +82,12 @@ def get_evaluation(eval_id: int) -> Dict[str, Any]:
 
 def get_pdf(eval_id: int) -> bytes:
     return _request("GET", f"/api/evaluations/{int(eval_id)}/pdf", timeout=30).content
+
+
+# The backend returns at once if feedback is already done or being generated elsewhere
+FEEDBACK_TIMEOUT_S = 300
+
+
+def request_feedback(eval_id: int) -> Dict[str, Any]:
+    """Asks the backend to write AI feedback for an attempt (safe to call more than once)."""
+    return _request("POST", f"/api/evaluations/{int(eval_id)}/feedback", timeout=FEEDBACK_TIMEOUT_S).json()

@@ -191,3 +191,26 @@ def test_demote_headings():
         "#### Assessment Report", "#### Section", "#### Sub", "#### Small",
         "Text with # hash", "#hashtag", "- bullet",
     ]
+
+
+from frontend.display import feedback_in_progress  # noqa: E402
+
+
+@pytest.mark.parametrize("source, status, in_progress", [
+    ("rule-based", "pending", True), ("rule-based", "generating", True),
+    ("rule-based", "failed", False), ("rule-based", "unavailable", False),
+    ("llm", "done", False), ("llm", "pending", False), ("rule-based", None, False),
+])
+def test_feedback_in_progress(source, status, in_progress):
+    assert feedback_in_progress({"feedback_source": source, "feedback_status": status}) is in_progress
+
+
+def test_feedback_notice_by_status():
+    assert feedback_notice({"feedback_source": "rule-based", "feedback_status": "pending"}) is None
+    assert "could not be generated" in feedback_notice({"feedback_source": "rule-based", "feedback_status": "failed"})
+    assert "No AI key" in feedback_notice({"feedback_source": "rule-based", "feedback_status": "unavailable"})
+
+
+def test_details_include_feedback_time():
+    rows = {r["Measure"]: r for r in details_rows(attempt(feedback_seconds=4.71))}
+    assert rows["Feedback time"]["Value"] == "4.7 s"

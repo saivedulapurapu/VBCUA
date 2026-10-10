@@ -45,14 +45,15 @@ def _status_code(error: Exception) -> Optional[int]:
     code = getattr(error, "code", None)
     return code if isinstance(code, int) else None
 
-def _generate(contents: Any, config: Dict[str, Any]) -> str:
+def _generate(contents: Any, config: Dict[str, Any], model: Optional[str] = None) -> str:
+    model = model or model_name()
     if not is_configured():
         raise LLMNotConfigured("GEMINI_API_KEY is not set")
     attempt = 0
     while True:
         try:
             response = _get_client().models.generate_content(
-                model=model_name(),
+                model=model,
                 contents=contents,
                 config=config,
             )
@@ -64,13 +65,13 @@ def _generate(contents: Any, config: Dict[str, Any]) -> str:
             if status in RETRYABLE_STATUS and attempt < len(RETRY_DELAYS_S):
                 delay = RETRY_DELAYS_S[attempt]
                 attempt += 1
-                logger.warning(f"{model_name()} returned {status}; retry {attempt}/{len(RETRY_DELAYS_S)} in {delay:.0f}s")
+                logger.warning(f"{model} returned {status}; retry {attempt}/{len(RETRY_DELAYS_S)} in {delay:.0f}s")
                 _sleep(delay)
                 continue
-            raise LLMError(f"{model_name()} call failed: {e}") from e
+            raise LLMError(f"{model} call failed: {e}") from e
     text = (response.text or "").strip()
     if not text:
-        raise LLMError(f"{model_name()} returned an empty response")
+        raise LLMError(f"{model} returned an empty response")
     return text
 
 # Sentinel: use settings.GEMINI_THINKING_LEVEL
@@ -93,13 +94,15 @@ def generate_text(
     system: Optional[str] = None,
     temperature: Optional[float] = None,
     thinking_level: Any = DEFAULT_THINKING,
+    model: Optional[str] = None,
 ) -> str:
     """
     Returns the model's plain-text answer to the prompt.
     thinking_level: "minimal" / "low" / "medium" / "high", None for the model default,
     or omitted to use settings.GEMINI_THINKING_LEVEL.
+    model: overrides settings.GEMINI_MODEL for this call (e.g. the feedback model).
     """
-    return _generate(prompt, _base_config(system, temperature, thinking_level))
+    return _generate(prompt, _base_config(system, temperature, thinking_level), model)
 
 def generate_json(
     prompt: str,
