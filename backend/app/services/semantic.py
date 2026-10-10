@@ -46,7 +46,10 @@ SIMILARITY_METHODS = {
 }
 
 def _word_forms(word: str) -> List[str]:
-    """Singular/plural variants by an optional trailing "s"/"es" (no stemming)."""
+    """
+    Singular/plural variants by an optional trailing "s"/"es", plus consonant + "y"
+    <-> "ies" ("query" == "queries"). No stemming.
+    """
     if not word[-1:].isalpha():
         return [word]
     forms = {word, word + "s", word + "es"}
@@ -54,6 +57,10 @@ def _word_forms(word: str) -> List[str]:
         forms.add(word[:-2])
     if word.endswith("s"):
         forms.add(word[:-1])
+    if len(word) > 1 and word.endswith("y") and word[-2] not in "aeiou":
+        forms.add(word[:-1] + "ies")
+    if len(word) > 3 and word.endswith("ies"):
+        forms.add(word[:-3] + "y")
     return sorted(forms, key=len, reverse=True)
 
 def keyword_pattern_v1(keyword: str) -> str:

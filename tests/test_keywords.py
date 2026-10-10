@@ -94,3 +94,23 @@ def test_coverage_and_combined_score(monkeypatch, method, coverage, combined):
     )
     assert result["keyword_coverage"] == coverage
     assert result["combined_score"] == pytest.approx(combined)
+
+
+@pytest.mark.parametrize("transcript, keyword", [
+    ("we run several queries", "query"),
+    ("a single query", "queries"),
+    ("data integrity policies", "policy"),
+    ("primary keys", "key"),  # vowel + y just adds "s"
+])
+def test_v1_y_ies_plurals(transcript, keyword):
+    assert found(transcript, keyword)
+
+
+def test_v1_y_ies_still_whole_word():
+    assert not found("subqueries are nested", "query")
+    assert not found("keies", "key")  # no "ies" form after a vowel
+
+
+def test_b0_y_ies_unchanged():
+    # B0 has no plural handling: "query" is not a substring of "queries"
+    assert not found("we run several queries", "query", method="b0")
