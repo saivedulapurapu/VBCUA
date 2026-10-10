@@ -50,3 +50,24 @@ def test_pdf_shows_stored_fluency_score(tmp_path):
 
 def test_pdf_fluency_na_for_old_rows(tmp_path):
     assert b"n/a" in render(tmp_path, make_evaluation(fluency_score=None))
+
+
+INJECTION = "R&D <img src='x'/> and <b>fake bold</b>"
+
+
+def test_pdf_builds_with_markup_in_user_text(tmp_path):
+    path = tmp_path / "report.pdf"
+    evaluation = make_evaluation(
+        transcription=INJECTION,
+        feedback=f"### Heading {INJECTION}\n- bullet {INJECTION}\n1. item {INJECTION}\n{INJECTION}",
+    )
+    generate_pdf_report(evaluation, f"Concept {INJECTION}", str(path))  # used to raise OSError
+    text = pdf_text(path.read_bytes())
+    assert b"<img src='x'/>" in text  # shown literally as text
+    assert b"<b>fake bold</b>" in text
+
+
+def test_pdf_feedback_markdown_bold_still_renders(tmp_path):
+    text = render(tmp_path, make_evaluation(feedback="This is **important** text"))
+    assert b"**" not in text
+    assert b"/F2 10 Tf (important) Tj" in text  # bold font (F2) applied to the **...** run

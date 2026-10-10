@@ -14,5 +14,6 @@ def pdf_text(data: bytes) -> bytes:
             out += zlib.decompress(base64.a85decode(raw, ignorechars=b" \t\n\r\x0b"))
         except Exception:
             pass
-    # Undo PDF string escaping of parentheses and backslashes
+    # Join adjacent text runs on a line, then undo PDF escaping of parentheses and backslashes
+    out = out.replace(b") Tj (", b"")
     return out.replace(b"\\(", b"(").replace(b"\\)", b")").replace(b"\\\\", b"\\")
