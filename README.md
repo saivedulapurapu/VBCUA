@@ -159,7 +159,7 @@ python run.py
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/` | Health check |
+| GET | `/api/health` | Health check |
 | POST | `/api/concepts` | Create a concept |
 | GET | `/api/concepts` | List concepts |
 | GET | `/api/concepts/{concept_id}` | Get one concept |

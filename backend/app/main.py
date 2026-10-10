@@ -4,13 +4,14 @@ import threading
 import time
 import uuid
 import logging
+from pathlib import Path
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from datetime import datetime, timedelta
 from sqlalchemy import or_, text
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 
 # Database & Config
 from backend.app.config import settings
@@ -149,9 +150,9 @@ def startup_db_setup():
 
 # --- API Routes ---
 
-@app.get("/")
-def read_root():
-    return {"message": "Welcome to the Voice-Based Concept Understanding Analyser API!"}
+@app.get("/api/health")
+def health():
+    return {"status": "ok", "message": "Voice-Based Concept Understanding Analyser API"}
 
 
 # 1. Reference Concept Endpoints
@@ -419,3 +420,36 @@ def download_pdf(eval_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error generating or downloading PDF: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"PDF generation failed: {e}")
+
+
+# ---------- Web frontend (React build in web/dist) ----------
+# Registered last so every /api route above takes precedence.
+
+WEB_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
+
+
+def resolve_web_file(dist: Path, request_path: str) -> Optional[Path]:
+    """
+    The file to serve for a browser path: an existing file inside dist, else index.html
+    (client-side routing). Returns None if the app is not built. Never leaves dist.
+    """
+    index = dist / "index.html"
+    if not index.is_file():
+        return None
+    candidate = (dist / request_path).resolve()
+    if request_path and candidate.is_file() and candidate.is_relative_to(dist.resolve()):
+        return candidate
+    return index
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+def serve_web(full_path: str):
+    if full_path == "api" or full_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="Not found")
+    target = resolve_web_file(WEB_DIST, full_path)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Web app is not built. Run: cd web && npm install && npm run build")
+    # Vite's hashed files in assets/ never change; everything else is revalidated
+    immutable = full_path.startswith("assets/") and target.name != "index.html"
+    headers = {"Cache-Control": "public, max-age=31536000, immutable" if immutable else "no-cache"}
+    return FileResponse(target, headers=headers)
