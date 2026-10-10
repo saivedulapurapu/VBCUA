@@ -83,7 +83,7 @@ export function ConceptPicker({ concepts, selectedId, onSelect }: Props) {
           />
           <ChevronDown size={16} aria-hidden style={{ position: 'absolute', right: 12, top: 14, opacity: 0.6, pointerEvents: 'none' }} />
           {open && (
-            <ul className="options glass" id={listId} role="listbox">
+            <ul className="options glass elevated" id={listId} role="listbox">
               {matches.length === 0 && <li className="option-empty">No matching concept</li>}
               {matches.map((c, i) => (
                 <li

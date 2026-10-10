@@ -10,6 +10,8 @@
   --blob-3: #67e8f9;
   --glass: rgba(255, 255, 255, 0.55);
   --glass-strong: rgba(255, 255, 255, 0.78);
+  --surface: rgb(248, 250, 255);
+  --scrim: rgba(30, 35, 70, 0.38);
   --glass-border: rgba(255, 255, 255, 0.75);
   --glass-shadow: 0 10px 40px rgba(31, 41, 90, 0.12);
   --text: #0f172a;
@@ -40,6 +42,8 @@
     --blob-3: #0e7490;
     --glass: rgba(255, 255, 255, 0.07);
     --glass-strong: rgba(255, 255, 255, 0.12);
+    --surface: rgb(17, 21, 48);
+    --scrim: rgba(4, 6, 18, 0.62);
     --glass-border: rgba(255, 255, 255, 0.14);
     --glass-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
     --text: #eef0ff;
@@ -68,6 +72,8 @@
   --blob-3: #0e7490;
   --glass: rgba(255, 255, 255, 0.07);
   --glass-strong: rgba(255, 255, 255, 0.12);
+  --surface: rgb(17, 21, 48);
+  --scrim: rgba(4, 6, 18, 0.62);
   --glass-border: rgba(255, 255, 255, 0.14);
   --glass-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
   --text: #eef0ff;
@@ -144,6 +150,15 @@ button, input, textarea, select { font: inherit; color: inherit; }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .glass { background: var(--glass-strong); }
 }
+
+/* Surfaces that float over other content (drawer, dropdown) must hide what is behind them */
+.glass.elevated {
+  background: var(--surface);
+  backdrop-filter: blur(28px) saturate(150%);
+  -webkit-backdrop-filter: blur(28px) saturate(150%);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+}
+.glass.elevated .field { border-color: color-mix(in srgb, var(--muted) 35%, transparent); }
 
 /* ---------- Layout ---------- */
 
@@ -483,7 +498,7 @@ textarea.field { min-height: 96px; resize: vertical; }
 
 /* ---------- Drawer (add concept) ---------- */
 
-.drawer-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.3); z-index: 40; animation: fade 0.2s ease; }
+.drawer-overlay { position: fixed; inset: 0; background: var(--scrim); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); z-index: 40; animation: fade 0.2s ease; }
 .drawer { position: fixed; top: 16px; right: 16px; bottom: 16px; width: min(420px, calc(100vw - 32px)); z-index: 50; padding: 24px; overflow-y: auto; animation: slide 0.25s ease; }
 @keyframes slide { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
 .form { display: grid; gap: 14px; }

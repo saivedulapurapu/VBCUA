@@ -45,7 +45,7 @@ export function AddConceptDrawer({ onClose, onCreated }: Props) {
   return (
     <>
       <div className="drawer-overlay" onClick={onClose} />
-      <aside className="drawer glass" role="dialog" aria-modal="true" aria-labelledby="add-concept-title">
+      <aside className="drawer glass elevated" role="dialog" aria-modal="true" aria-labelledby="add-concept-title">
         <div className="result-head">
           <h2 id="add-concept-title" className="result-title">Add a concept</h2>
           <button type="button" className="btn btn-icon" onClick={onClose} aria-label="Close">
