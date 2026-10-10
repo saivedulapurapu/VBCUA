@@ -42,14 +42,14 @@ Changes made on branch `research/week1-fixes`. The original formulas remain avai
 
 | Area | Change | Commit |
 |---|---|---|
-| Similarity | `(cos + 1) / 2` rescaling removed; similarity is `max(0, cos) × 100` | `e2a9dd5` |
-| Transcription | Local Whisper `small` is the default; Gemini only as an opt-in fallback; ASR model and confidence stored per attempt | `95ce6c9` |
-| LLM | `google-generativeai` and `gemini-1.5-flash` replaced by `google-genai` and `gemini-3.8-flash`, behind one client module | `92792e0` |
-| Volume | RMS volume no longer affects fluency; used only for a "check your microphone" warning | `a5de403` |
-| Fillers and pauses | Filler counts stored but marked experimental and not scored; pause ratio measured between first and last speech | `1ebb9cf` |
-| Keywords | Whole-word matching (hyphen/space and simple plurals); no substring matches | `658f646`, `1e45b10` |
-| Storage | Every sub-score, scoring method and feedback source stored per attempt | `6e7204d` |
-| Frontend | Shows the stored backend scores and the evaluated concept's keywords | `9ad34fc` |
-| Security | User-provided text escaped in the Streamlit HTML and the PDF report | `abf511f` |
+| Similarity | `(cos + 1) / 2` rescaling removed; similarity is `max(0, cos) × 100` | `33a9195` |
+| Transcription | Local Whisper `small` is the default; Gemini only as an opt-in fallback; ASR model and confidence stored per attempt | `c038359` |
+| LLM | `google-generativeai` and `gemini-1.5-flash` replaced by `google-genai` and `gemini-3.8-flash`, behind one client module | `a1ea72f` |
+| Volume | RMS volume no longer affects fluency; used only for a "check your microphone" warning | `403d75c` |
+| Fillers and pauses | Filler counts stored but marked experimental and not scored; pause ratio measured between first and last speech | `af0be81` |
+| Keywords | Whole-word matching (hyphen/space and simple plurals); no substring matches | `dd52534`, `7af3347` |
+| Storage | Every sub-score, scoring method and feedback source stored per attempt | `c1cbea2` |
+| Frontend | Shows the stored backend scores and the evaluated concept's keywords | `0956a72` |
+| Security | User-provided text escaped in the Streamlit HTML and the PDF report | `abb3bd0` |
 
 Grade cut-offs (80 / 50) are unchanged and are not yet calibrated against human ratings.
