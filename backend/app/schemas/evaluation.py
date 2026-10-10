@@ -16,6 +16,7 @@ class EvaluationResponse(BaseModel):
     transcription: str
     asr_model: Optional[str] = None
     asr_confidence: Optional[float] = None
+    asr_device: Optional[str] = None
     semantic_score: float
     cosine_similarity: Optional[float] = None
     keyword_coverage: Optional[float] = None

@@ -4,6 +4,8 @@ import threading
 import numpy as np
 from typing import Dict, Any, List, Tuple
 
+from backend.app.services.device import resolve_device
+
 logger = logging.getLogger(__name__)
 
 # Lazy load model
@@ -11,13 +13,27 @@ _sbert_model = None
 # Startup preloading and a request may ask for the model at once
 _sbert_lock = threading.Lock()
 
+SBERT_MODEL_NAME = "all-MiniLM-L6-v2"
+
+def load_sentence_transformer(device: str):
+    """
+    Loads from the local Hugging Face cache without any network call; downloads
+    only if the model is not cached yet.
+    """
+    from sentence_transformers import SentenceTransformer
+    try:
+        return SentenceTransformer(SBERT_MODEL_NAME, device=device, local_files_only=True)
+    except Exception as e:
+        logger.info(f"Sentence-BERT not in local cache ({type(e).__name__}); downloading {SBERT_MODEL_NAME}...")
+        return SentenceTransformer(SBERT_MODEL_NAME, device=device)
+
 def get_sbert_model():
     global _sbert_model
     with _sbert_lock:
         if _sbert_model is None:
-            from sentence_transformers import SentenceTransformer
-            logger.info("Loading Sentence-BERT model (all-MiniLM-L6-v2)...")
-            _sbert_model = SentenceTransformer("all-MiniLM-L6-v2")
+            device = resolve_device()
+            logger.info(f"Loading Sentence-BERT model ({SBERT_MODEL_NAME}) on {device}...")
+            _sbert_model = load_sentence_transformer(device)
         return _sbert_model
 
 def calculate_cosine_similarity(vec1: np.ndarray, vec2: np.ndarray) -> float:

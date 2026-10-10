@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     # Low keeps feedback fast; it does not affect any score.
     GEMINI_THINKING_LEVEL: str = Field(default="low", validation_alias="GEMINI_THINKING_LEVEL")
 
+    # Device for Whisper and Sentence-BERT: cpu (default), cuda, or auto (cuda if available).
+    # Needs a CUDA build of PyTorch for cuda; falls back to cpu otherwise.
+    DEVICE: str = Field(default="cpu", validation_alias="DEVICE")
+
     # Load Whisper and Sentence-BERT in the background at startup so the first attempt is not slowed down
     PRELOAD_MODELS: bool = Field(default=True, validation_alias="PRELOAD_MODELS")
     

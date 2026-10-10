@@ -4,22 +4,25 @@ import threading
 from typing import Any, Dict, List, Optional
 from backend.app.config import settings
 from backend.app.services import llm_client
+from backend.app.services.device import asr_device_label, resolve_device
 
 logger = logging.getLogger(__name__)
 
-# Lazy load whisper to avoid slow startup times; one cached model per size
-_whisper_models: Dict[str, Any] = {}
+# Lazy load whisper to avoid slow startup times; one cached model per (size, device).
+# whisper.load_model reads the local file in ~/.cache/whisper and downloads only if it is missing.
+_whisper_models: Dict[Any, Any] = {}
 # Startup preloading and a request may ask for the same model at once
 _whisper_lock = threading.Lock()
 
-def get_whisper_model(model_name: Optional[str] = None):
+def get_whisper_model(model_name: Optional[str] = None, device: Optional[str] = None):
     model_name = model_name or settings.WHISPER_MODEL
+    device = device or resolve_device()
     with _whisper_lock:
-        if model_name not in _whisper_models:
+        if (model_name, device) not in _whisper_models:
             import whisper
-            logger.info(f"Loading local Whisper model: {model_name}...")
-            _whisper_models[model_name] = whisper.load_model(model_name)
-        return _whisper_models[model_name]
+            logger.info(f"Loading local Whisper model: {model_name} on {device}...")
+            _whisper_models[(model_name, device)] = whisper.load_model(model_name, device=device)
+        return _whisper_models[(model_name, device)]
 
 def mean_avg_logprob(segments: List[Dict[str, Any]]) -> Optional[float]:
     """
@@ -33,15 +36,17 @@ def mean_avg_logprob(segments: List[Dict[str, Any]]) -> Optional[float]:
 def transcribe_audio_whisper(audio_path: str, model_name: Optional[str] = None) -> Dict[str, Any]:
     """
     Transcribes audio using a local Whisper model.
-    Returns {"text", "asr_model", "asr_confidence"}.
+    Returns {"text", "asr_model", "asr_confidence", "asr_device"}.
     """
     model_name = model_name or settings.WHISPER_MODEL
-    model = get_whisper_model(model_name)
-    result = model.transcribe(audio_path, language="en", fp16=False)
+    device = resolve_device()
+    model = get_whisper_model(model_name, device)
+    result = model.transcribe(audio_path, language="en", fp16=(device == "cuda"))
     return {
         "text": result.get("text", "").strip(),
         "asr_model": f"whisper-{model_name}",
         "asr_confidence": mean_avg_logprob(result.get("segments", [])),
+        "asr_device": asr_device_label(device),
     }
 
 def transcribe_audio_gemini(audio_path: str) -> str:
@@ -73,7 +78,7 @@ def transcribe_audio(audio_path: str) -> Dict[str, Any]:
         try:
             text = transcribe_audio_gemini(audio_path)
             logger.info(f"Transcribed with {llm_client.model_name()} (fallback)")
-            return {"text": text, "asr_model": llm_client.model_name(), "asr_confidence": None}
+            return {"text": text, "asr_model": llm_client.model_name(), "asr_confidence": None, "asr_device": None}
         except Exception as e:
             logger.error(f"Gemini fallback transcription failed: {e}")
 
