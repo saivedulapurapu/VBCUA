@@ -12,21 +12,26 @@ VBCUA is an AI-powered web application designed to evaluate how effectively user
 
 1. **Semantic Concept Evaluation**
    - Transcribes audio explanations using local **OpenAI Whisper** (`small` by default). An optional **Google Gemini** fallback is used only if Whisper fails and `STT_GEMINI_FALLBACK=true`. The ASR model used is saved with every attempt.
-   - Compares the explanation to predefined reference definitions using **Sentence-BERT (S-BERT)** semantic embeddings.
-   - Evaluates keyword coverage against essential terms.
-   - Assigns qualitative grades: *Strong Understanding*, *Moderate Understanding*, or *Poor Understanding*.
+   - Compares the explanation to predefined reference definitions using **Sentence-BERT (S-BERT)** semantic embeddings (similarity = `max(0, cosine) × 100`).
+   - Checks keyword coverage with whole-word matching (case-insensitive; hyphen/space and simple plurals treated as equal; no substring matches).
+   - Understanding score = 70% similarity + 30% keyword coverage.
+   - Assigns qualitative grades: *Strong Understanding* (≥ 80), *Moderate Understanding* (≥ 50), or *Poor Understanding*. The cut-offs are not yet calibrated against human ratings.
 
 2. **Speech Fluency & Delivery Metrics**
-   - Analyzes filler word usage (`um`, `uh`, `like`, `ah`, `you know`, `basically`, `actually`).
-   - Extracts pause-to-speech ratio and silence thresholds using **Librosa** audio signal processing.
-   - Measures speaking volume intensity using Root Mean Square (RMS) energy.
-   - Computes a weighted overall score ($70\%$ semantic comprehension + $30\%$ speech fluency).
+   - Fluency score is based on the pause ratio, measured between the first and last detected speech using **Librosa**.
+   - Filler words (`um`, `uh`, `like`, `ah`, `you know`, `basically`, `actually`) are counted and stored but are **experimental and not scored**: speech-to-text usually removes "um/uh".
+   - RMS energy is stored as a raw value and used only to warn about a very quiet recording ("check your microphone"); it does not affect any score.
+   - Overall score = 70% understanding + 30% fluency.
+   - The original formulas remain available as baseline `B0` (`method="b0"`) for research comparisons.
+   - Every sub-score, the scoring methods, the ASR model and the feedback source (LLM or rule-based) are stored per attempt.
 
 3. **Interactive Reporting Dashboard**
    - Displays real-time dark-cyber style waveform visualization of user recordings.
    - Interactive gauge displays for scores and color-coded keyword badges.
    - Historical evaluation timeline.
    - Downloads styled assessment reports as **ReportLab PDFs**.
+
+There are no user accounts or login: all attempts are stored in one shared history. Login and registration appear in the June 2026 project documents as planned features; see [Scope and changes since June 2026](VBCUA_Documents/Scope_and_Changes.md).
 
 ---
 
@@ -51,11 +56,16 @@ VBCUA/
 │   └── requirements.txt       # Backend dependencies
 ├── frontend/
 │   ├── app.py                 # Streamlit frontend dashboard
+│   ├── display.py             # Display helpers (stored scores, HTML escaping)
 │   ├── requirements.txt       # Frontend dependencies
 │   └── styles.css             # Premium glassmorphism dark-cyber CSS styles
+├── tests/                     # pytest suite (models and APIs stubbed)
+├── research/data/             # Research data (git-ignored)
 ├── uploads/                   # Local store for audio uploads and generated PDFs
+├── VBCUA_Documents/           # June 2026 project documents and research plan
 ├── .env                       # Local environment configuration file (ignored)
 ├── .env.template              # Template for configuring env variables
+├── pytest.ini                 # pytest configuration
 ├── run.py                     # Orchestration script to run backend and frontend
 └── README.md                  # Project documentation
 ```
@@ -65,7 +75,7 @@ VBCUA/
 ## Installation & Setup
 
 ### Prerequisites
-- **Python 3.10+**
+- **Python 3.10–3.12** (tested with 3.11; PyTorch/Whisper are not tested on 3.13 here)
 - **FFmpeg**: Required by Librosa/Whisper. 
   * *Windows*: Install FFmpeg (e.g. `winget install --id Gyan.FFmpeg -e`) and make sure `ffmpeg -version` works in a new terminal.
 
@@ -125,6 +135,34 @@ python run.py
 
 - **FastAPI Backend**: Runs at `http://127.0.0.1:8000` (API documentation at `/docs`).
 - **Streamlit Frontend**: Opens automatically at `http://localhost:8501`.
+
+---
+
+## API
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/` | Health check |
+| POST | `/api/concepts` | Create a concept |
+| GET | `/api/concepts` | List concepts |
+| GET | `/api/concepts/{concept_id}` | Get one concept |
+| POST | `/api/evaluate` | Upload audio and run the evaluation pipeline |
+| GET | `/api/evaluations` | List past attempts |
+| GET | `/api/evaluations/{eval_id}` | Get one attempt |
+| GET | `/api/evaluations/{eval_id}/pdf` | Download the PDF report for an attempt |
+
+Interactive documentation is served at `/docs` while the backend is running.
+
+---
+
+## Running Tests
+
+```bash
+pip install pytest
+python -m pytest
+```
+
+The tests stub Whisper, Sentence-BERT and Gemini, so they need no model downloads, API key or network access.
 
 ---
 
