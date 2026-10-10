@@ -60,7 +60,7 @@ def test_title_from_evaluated_concept():
 # --- Fix 9: every user-provided value is escaped before st.html ---
 
 from frontend.display import (  # noqa: E402
-    PLAIN, description_html, esc, grade_html, history_table_html, keyword_badges_html, transcript_html,
+    PLAIN, description_html, esc, keyword_badges_html, transcript_html,
 )
 
 HOSTILE = [
@@ -94,26 +94,8 @@ def test_keyword_badges_escaped(value, status):
     assert_inert(keyword_badges_html([(value, status)]), value)
 
 
-@pytest.mark.parametrize("value", HOSTILE)
-def test_grade_escaped(value):
-    assert_inert(grade_html(value), value)
-
-
-@pytest.mark.parametrize("value", HOSTILE)
-def test_history_table_escaped(value):
-    row = {"Date": value, "Concept": value, "Score": value, "Grade": value, "Duration": value, "Fillers": value}
-    out = history_table_html([row])
-    assert "<script" not in out and "<img" not in out and "<svg" not in out
-    assert out.count(esc(value)) >= 6
-
-
 def test_esc_escapes_quotes():
     assert esc("a'b\"c") == "a&#x27;b&quot;c"
-
-
-def test_history_table_keeps_view_link():
-    row = {"Date": "d", "Concept": "c", "Score": "1%", "Grade": "Strong Understanding", "Duration": "1s", "Fillers": 0}
-    assert "href='/?load_attempt=0'" in history_table_html([row])
 
 
 # --- Navigation helpers ---
@@ -150,3 +132,51 @@ def test_feedback_notice_only_for_rule_based():
     assert "rule-based" in feedback_notice({"feedback_source": "rule-based"})
     assert feedback_notice({"feedback_source": "llm"}) is None
     assert feedback_notice({}) is None  # older attempts
+
+
+# --- Results view helpers ---
+
+from frontend.display import details_rows, grade_badge_color, score_cards  # noqa: E402
+
+
+@pytest.mark.parametrize("grade, color", [
+    ("Strong Understanding", "green"), ("Moderate Understanding", "orange"), ("Poor Understanding", "red"),
+])
+def test_grade_badge_color(grade, color):
+    assert grade_badge_color(grade) == color
+
+
+def test_score_cards_use_stored_values():
+    res = attempt(final_score=76.94, understanding_score=67.0, semantic_score=85.0, keyword_coverage=25.0,
+                  fluency_score=100.0, pause_ratio_v1=0.263, pause_ratio=0.5)
+    overall, understanding, fluency = score_cards(res)
+    assert (overall["label"], overall["value"]) == ("Overall", "76.9")
+    assert understanding["value"] == "67.0"
+    assert understanding["caption"] == "Similarity 85.0 · keywords 25%"
+    assert fluency["value"] == "100"
+    assert fluency["caption"] == "Pauses 26% of speaking time"  # v1 pause ratio, not B0
+
+
+def test_score_cards_old_rows_show_na():
+    res = attempt(understanding_score=None, keyword_coverage=None, fluency_score=None, pause_ratio_v1=None,
+                  pause_ratio=0.4, final_score=50.0, semantic_score=60.0)
+    _, understanding, fluency = score_cards(res)
+    assert understanding["value"] == "n/a"
+    assert "keywords n/a" in understanding["caption"]
+    assert fluency["value"] == "n/a"
+    assert fluency["caption"] == "Pauses 40% of speaking time"  # falls back to the stored B0 value
+
+
+def test_details_rows_cover_all_sub_scores():
+    res = attempt(semantic_score=85.0, cosine_similarity=0.8502, keyword_coverage=25.0, understanding_score=67.0,
+                  pause_ratio_v1=0.263, final_score=76.9, filler_words_count=0, speech_duration=81.9,
+                  asr_model="whisper-small", asr_confidence=-0.2238, feedback_source="rule-based", llm_model=None,
+                  semantic_method="v1", fluency_method="v1")
+    rows = {r["Measure"]: r for r in details_rows(res)}
+    assert rows["Cosine similarity"]["Value"] == "0.850"
+    assert rows["Pause ratio"]["Value"] == "26.3%"
+    assert rows["Speech-to-text model"]["Value"] == "whisper-small"
+    assert rows["Speech-to-text model"]["Note"] == "ASR confidence -0.224"
+    assert rows["Feedback source"]["Value"] == "rule-based"
+    assert rows["Filler words"]["Note"] == "Experimental, not scored"
+    assert rows["Scoring methods"]["Value"] == "semantic v1, fluency v1"

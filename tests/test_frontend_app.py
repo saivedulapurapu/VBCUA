@@ -164,3 +164,28 @@ def test_add_concept_form_in_sidebar(backend):
 
 def test_empty_state_before_any_result(backend):
     assert "No results yet" in all_text(run())
+
+
+# --- Results view ---
+
+def test_results_view_has_cards_tabs_and_details(backend):
+    at = run(session={"current_evaluation": attempt()})
+    assert [m.label for m in at.metric] == ["Overall", "Understanding", "Fluency"]
+    assert [m.value for m in at.metric] == ["82.2", "74.5", "100"]
+    assert [t.label for t in at.tabs] == ["Feedback", "Keywords", "Transcript", "Details"]
+    details = at.dataframe[0].value  # first dataframe is the Details table (no history here)
+    assert "Cosine similarity" in list(details["Measure"])
+    text = all_text(at)
+    assert ":green-badge[Strong Understanding]" in text
+    assert "1 of 2 key terms mentioned" in text
+
+
+def test_results_show_microphone_warning(backend):
+    at = run(session={"current_evaluation": attempt(recording_warning="Recording is very quiet — check your microphone.")})
+    assert any("check your microphone" in w.value for w in at.warning)
+
+
+def test_results_escape_transcript(backend):
+    text = all_text(run(session={"current_evaluation": attempt(transcription="<script>alert(1)</script>")}))
+    assert "<script>alert" not in text
+    assert "&lt;script&gt;" in text

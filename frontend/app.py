@@ -10,9 +10,9 @@ import streamlit as st
 import api
 from api import BackendError
 from display import (
-    FOUND, MISSING, PLAIN, concept_title as get_concept_title, description_html,
-    feedback_notice, fluency_text, history_rows, initial_concept_id, keyword_badges,
-    keyword_badges_html, transcript_html,
+    FOUND, MISSING, PLAIN, concept_title as get_concept_title, description_html, details_rows,
+    feedback_notice, grade_badge_color, history_rows, initial_concept_id, keyword_badges,
+    keyword_badges_html, score_cards, transcript_html,
 )
 
 st.set_page_config(
@@ -42,6 +42,12 @@ def show_evaluation(result):
     """Display an attempt and remember it in the URL so a page reload keeps it."""
     st.session_state.current_evaluation = result
     st.query_params["attempt"] = str(result["id"])
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def cached_pdf(eval_id: int) -> bytes:
+    """A report never changes once the attempt is saved, so fetch it once per attempt."""
+    return api.get_pdf(eval_id)
 
 
 def step_title(number: int, text: str):
@@ -194,7 +200,7 @@ with col_input:
         can_analyse = bool(audio_data and selected_concept)
         label = f"Analyse explanation of {selected_concept['title']}" if selected_concept else "Analyse explanation"
         # The button names the concept so the explanation is never graded against the wrong one
-        if st.button(label, type="primary", use_container_width=True, disabled=not can_analyse):
+        if st.button(label, type="primary", width="stretch", disabled=not can_analyse):
             result = run_evaluation_with_progress(selected_concept, audio_data, filename)
             if result:
                 show_evaluation(result)
@@ -208,36 +214,50 @@ with col_results:
         if "current_evaluation" in st.session_state:
             eval_res = st.session_state.current_evaluation
             concept_title = get_concept_title(eval_res)
-            step_title(3, f"Results: {concept_title}")
+            grade = eval_res["understanding_grade"]
 
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Overall", f"{eval_res['final_score']:.1f}", border=True)
-            c2.metric("Similarity", f"{eval_res['semantic_score']:.1f}", border=True)
-            c3.metric("Fluency", fluency_text(eval_res), border=True)
-            st.caption(eval_res["understanding_grade"])
+            step_title(3, "Results")
+            head_left, head_right = st.columns([3, 2], vertical_alignment="center")
+            head_left.markdown(f"**{concept_title}**")
+            head_left.caption(f"Attempt #{eval_res['id']} · {str(eval_res.get('created_at', ''))[:16].replace('T', ' ')}")
+            with head_right:
+                st.badge(grade, color=grade_badge_color(grade))
+
+            for column, card in zip(st.columns(3), score_cards(eval_res)):
+                with column:
+                    st.metric(card["label"], card["value"], help=card["help"], border=True)
+                    st.caption(card["caption"])
 
             if eval_res.get("recording_warning"):
                 st.warning(eval_res["recording_warning"], icon=":material/mic_off:")
-
-            st.markdown("**Keywords**")
-            badges = keyword_badges(eval_res)
-            if badges:
-                st.html(keyword_badges_html(badges))
-            if badges and all(status not in (FOUND, MISSING) for _, status in badges):
-                st.caption("Keyword matches were not stored for this older attempt.")
-
-            st.markdown("**Transcript**")
-            st.html(transcript_html(eval_res["transcription"]))
-
-            st.markdown("**Feedback**")
             notice = feedback_notice(eval_res)
             if notice:
-                st.info(notice)
-            st.markdown(eval_res["feedback"])
+                st.info(notice, icon=":material/info:")
+
+            tab_feedback, tab_keywords, tab_transcript, tab_details = st.tabs(
+                ["Feedback", "Keywords", "Transcript", "Details"]
+            )
+            with tab_feedback:
+                st.markdown(eval_res["feedback"])
+            with tab_keywords:
+                badges = keyword_badges(eval_res)
+                found = sum(1 for _, status in badges if status == FOUND)
+                if badges and all(status not in (FOUND, MISSING) for _, status in badges):
+                    st.caption("Keyword matches were not stored for this older attempt.")
+                elif badges:
+                    st.caption(f"{found} of {len(badges)} key terms mentioned (whole-word matches).")
+                if badges:
+                    st.html(keyword_badges_html(badges))
+            with tab_transcript:
+                st.html(transcript_html(eval_res["transcription"]))
+                st.caption(f"Transcribed by {eval_res.get('asr_model') or 'unknown model'}. "
+                           "Filler words such as 'um' are usually not transcribed.")
+            with tab_details:
+                st.dataframe(details_rows(eval_res), hide_index=True, width="stretch")
 
             try:
                 st.download_button(
-                    "Download PDF report", data=api.get_pdf(eval_res["id"]),
+                    "Download PDF report", data=cached_pdf(eval_res["id"]),
                     file_name=f"VBCUA_Report_{concept_title.replace(' ', '_')}_{eval_res['id']}.pdf",
                     mime="application/pdf", icon=":material/download:",
                 )
@@ -265,8 +285,12 @@ if history:
     st.caption("Select a row to open that attempt.")
     event = st.dataframe(
         [{k: v for k, v in row.items() if k != "id"} for row in rows],
-        hide_index=True, use_container_width=True,
+        hide_index=True, width="stretch",
         on_select="rerun", selection_mode="single-row", key="history_table",
+        column_config={
+            "Overall": st.column_config.ProgressColumn("Overall", min_value=0, max_value=100, format="%.1f"),
+            "Duration (s)": st.column_config.NumberColumn("Duration (s)", format="%.0f"),
+        },
     )
     selected = event.selection.rows
     selected_id = rows[selected[0]]["id"] if selected else None
