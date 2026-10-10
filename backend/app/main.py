@@ -55,6 +55,7 @@ def startup_db_setup():
         "final_score": "FLOAT DEFAULT 0.0",
         "asr_model": "VARCHAR(50)",
         "asr_confidence": "FLOAT",
+        "pause_ratio_v1": "FLOAT",
     }
     for column, column_type in added_columns.items():
         db = next(get_db())
@@ -195,7 +196,7 @@ def evaluate_audio(
         # Step D: Fluency Analysis
         fluency_metrics = compute_fluency_score(
             filler_words_ratio=audio_metrics["filler_words_ratio"],
-            pause_ratio=audio_metrics["pause_ratio"]
+            pause_ratio=audio_metrics["pause_ratio_v1"]
         )
         logger.info(f"Fluency score calculated: {fluency_metrics['fluency_score']}/100")
 
@@ -219,6 +220,7 @@ def evaluate_audio(
             filler_words_count=audio_metrics["filler_words_count"],
             filler_words_ratio=audio_metrics["filler_words_ratio"],
             pause_ratio=audio_metrics["pause_ratio"],
+            pause_ratio_v1=audio_metrics["pause_ratio_v1"],
             rms_energy=audio_metrics["rms_energy"],
             speech_duration=audio_metrics["duration"],
             final_score=evaluation_result["final_score"],

@@ -20,6 +20,7 @@ class EvaluationResponse(BaseModel):
     filler_words_count: int
     filler_words_ratio: float
     pause_ratio: float
+    pause_ratio_v1: Optional[float] = None
     rms_energy: float
     speech_duration: float
     final_score: float

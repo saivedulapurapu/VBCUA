@@ -14,9 +14,10 @@ def compute_fluency_score(
 ) -> Dict[str, Any]:
     """
     Computes a speech fluency score out of 100 and returns observations.
-    method: "v1" (default) scores fillers and pauses only.
-            "b0" is the original formula, which also deducts for low RMS volume
-            (measures the microphone, not the speaker). Kept only for comparison.
+    method: "v1" (default) scores pauses only; pass the trimmed pause_ratio_v1.
+            Filler counts are ignored (ASR transcripts usually drop "um/uh").
+            "b0" is the original formula: fillers, whole-clip pause ratio and a
+            low RMS volume deduction. Kept only for comparison.
     """
     if method not in FLUENCY_METHODS:
         raise ValueError(f"Unknown fluency method: {method!r}")
@@ -27,15 +28,16 @@ def compute_fluency_score(
     deductions = {}
     observations = []
 
-    # 1. Filler word deductions (ideal ratio is < 2.0 filler words per 100 words)
-    if filler_words_ratio > 2.0:
-        # Deduct 4 points for every point above 2.0, capped at 30 points
-        filler_deduction = min(30.0, (filler_words_ratio - 2.0) * 4.0)
-        score -= filler_deduction
-        deductions["filler_words"] = round(filler_deduction, 1)
-        observations.append(f"Frequent use of filler words ({filler_words_ratio:.1f} per 100 words). Try replacing pauses with silence.")
-    else:
-        observations.append("Excellent control of filler words; speech is clear and focused.")
+    # 1. B0 only: Filler word deductions (ideal ratio is < 2.0 filler words per 100 words)
+    if method == "b0":
+        if filler_words_ratio > 2.0:
+            # Deduct 4 points for every point above 2.0, capped at 30 points
+            filler_deduction = min(30.0, (filler_words_ratio - 2.0) * 4.0)
+            score -= filler_deduction
+            deductions["filler_words"] = round(filler_deduction, 1)
+            observations.append(f"Frequent use of filler words ({filler_words_ratio:.1f} per 100 words). Try replacing pauses with silence.")
+        else:
+            observations.append("Excellent control of filler words; speech is clear and focused.")
 
     # 2. Pause ratio deductions (ideal pause ratio is between 10% and 25% for natural phrasing)
     if pause_ratio > 0.30:
@@ -153,7 +155,7 @@ def generate_ai_feedback(
     
     Please write a structured evaluation report. Use markdown formatting. Include the following sections:
     1. **Conceptual Accuracy & Comprehension**: Discuss what they explained correctly, what they missed, and any misconceptions they showed.
-    2. **Speech Delivery & Fluency**: Analyze their speaking style, filler word usage, and pacing based on the observations.
+    2. **Speech Delivery & Fluency**: Analyze their pacing and pauses based on the observations.
     3. **Key Suggestions for Improvement**: Provide 2-3 specific, actionable steps to help them explain this topic better next time.
     
     Keep the tone professional, encouraging, and constructive. Return ONLY the markdown formatted response.

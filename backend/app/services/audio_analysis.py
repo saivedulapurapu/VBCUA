@@ -3,7 +3,7 @@ import re
 import numpy as np
 import librosa
 import soundfile as sf
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 
 # Mean RMS over the whole clip below this suggests a too-quiet recording.
 # Uncalibrated; used only for a microphone warning, never for scoring.
@@ -16,6 +16,25 @@ def recording_warning(rms_energy: Optional[float]) -> Optional[str]:
     if rms_energy is not None and rms_energy < LOW_RMS_THRESHOLD:
         return "Recording is very quiet — check your microphone."
     return None
+
+def compute_pause_ratios(non_silent_intervals: Any, total_samples: int) -> Tuple[float, float]:
+    """
+    Returns (pause_ratio_b0, pause_ratio_v1) from librosa.effects.split intervals.
+    b0: silent share of the whole clip (leading/trailing silence included).
+    v1: silent share between the start of the first and end of the last speech.
+    With no speech detected both are 1.0 (all silence).
+    """
+    if total_samples <= 0:
+        return 0.0, 0.0
+    if len(non_silent_intervals) == 0:
+        return 1.0, 1.0
+
+    non_silent_samples = sum(int(end - start) for start, end in non_silent_intervals)
+    pause_ratio_b0 = float((total_samples - non_silent_samples) / total_samples)
+
+    speech_span = int(non_silent_intervals[-1][1] - non_silent_intervals[0][0])
+    pause_ratio_v1 = float((speech_span - non_silent_samples) / speech_span) if speech_span > 0 else 0.0
+    return pause_ratio_b0, pause_ratio_v1
 
 def analyze_audio_features(audio_path: str, transcript: str) -> Dict[str, Any]:
     """
@@ -36,6 +55,7 @@ def analyze_audio_features(audio_path: str, transcript: str) -> Dict[str, Any]:
             "duration": 0.0,
             "rms_energy": 0.0,
             "pause_ratio": 0.0,
+            "pause_ratio_v1": 0.0,
             "filler_words_count": 0,
             "filler_words_ratio": 0.0,
             "filler_words_list": []
@@ -49,12 +69,7 @@ def analyze_audio_features(audio_path: str, transcript: str) -> Dict[str, Any]:
     # librosa.effects.split returns intervals of non-silent audio
     # top_db=35 means any frame below 35dB relative to max is silence
     non_silent_intervals = librosa.effects.split(y, top_db=35)
-    
-    non_silent_samples = sum(interval[1] - interval[0] for interval in non_silent_intervals)
-    total_samples = len(y)
-    
-    silent_samples = total_samples - non_silent_samples
-    pause_ratio = float(silent_samples / total_samples) if total_samples > 0 else 0.0
+    pause_ratio, pause_ratio_v1 = compute_pause_ratios(non_silent_intervals, len(y))
 
     # 4. Filler Words Analysis
     # Clean the transcript and find occurrences of filler words
@@ -85,7 +100,8 @@ def analyze_audio_features(audio_path: str, transcript: str) -> Dict[str, Any]:
     return {
         "duration": duration,
         "rms_energy": mean_rms,
-        "pause_ratio": pause_ratio,
+        "pause_ratio": pause_ratio,          # B0: whole clip
+        "pause_ratio_v1": pause_ratio_v1,    # v1: first to last speech only
         "filler_words_count": total_fillers,
         "filler_words_ratio": filler_ratio,
         "filler_words_list": [f"{k}: {v}" for k, v in filler_counts.items() if v > 0]

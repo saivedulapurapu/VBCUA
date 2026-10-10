@@ -8,6 +8,8 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from backend.app.services.audio_analysis import recording_warning
 
+FILLER_NOTE = "Filler counts are experimental — speech-to-text usually removes 'um/uh'. Not used in scoring."
+
 def generate_pdf_report(evaluation: Any, concept_title: str, output_path: str) -> str:
     """
     Generates a professional PDF report containing the score, transcript,
@@ -133,7 +135,8 @@ def generate_pdf_report(evaluation: Any, concept_title: str, output_path: str) -
     # Wait, the evaluation object itself has the metrics saved, so let's calculate the fluency score stored
     # We will pass the exact values or retrieve them from evaluation
     # Let's adjust fluency display to show the pause ratio and filler count:
-    kpi_data[1][2] = Paragraph(f"P: {evaluation.pause_ratio*100:.0f}% / F: {evaluation.filler_words_count}", card_val_style)
+    pause_ratio = evaluation.pause_ratio_v1 if evaluation.pause_ratio_v1 is not None else evaluation.pause_ratio
+    kpi_data[1][2] = Paragraph(f"P: {pause_ratio*100:.0f}% / Fillers (exp.): {evaluation.filler_words_count}", card_val_style)
 
     kpi_table = Table(kpi_data, colWidths=[2.1 * inch, 2.1 * inch, 2.1 * inch], rowHeights=[20, 35])
     kpi_table.setStyle(TableStyle([
@@ -158,9 +161,9 @@ def generate_pdf_report(evaluation: Any, concept_title: str, output_path: str) -
     story.append(Paragraph("Fluency & Delivery Metrics", section_heading))
     metrics_data = [
         [Paragraph("<b>Metric</b>", body_style), Paragraph("<b>Value</b>", body_style), Paragraph("<b>Target</b>", body_style)],
-        [Paragraph("Filler Word Count", body_style), Paragraph(str(evaluation.filler_words_count), body_style), Paragraph("0 - 2 words", body_style)],
-        [Paragraph("Filler Words Ratio", body_style), Paragraph(f"{evaluation.filler_words_ratio:.1f} per 100 words", body_style), Paragraph("< 2.0 ratio", body_style)],
-        [Paragraph("Pause Ratio (Silence)", body_style), Paragraph(f"{evaluation.pause_ratio*100:.1f}%", body_style), Paragraph("10% - 25%", body_style)],
+        [Paragraph("Pause Ratio (between first and last speech)", body_style), Paragraph(f"{pause_ratio*100:.1f}%", body_style), Paragraph("10% - 25%", body_style)],
+        [Paragraph("Filler Word Count (experimental)", body_style), Paragraph(str(evaluation.filler_words_count), body_style), Paragraph("not scored", body_style)],
+        [Paragraph("Filler Words Ratio (experimental)", body_style), Paragraph(f"{evaluation.filler_words_ratio:.1f} per 100 words", body_style), Paragraph("not scored", body_style)],
     ]
     metrics_table = Table(metrics_data, colWidths=[2.2 * inch, 2.1 * inch, 2.1 * inch])
     metrics_table.setStyle(TableStyle([
@@ -171,6 +174,8 @@ def generate_pdf_report(evaluation: Any, concept_title: str, output_path: str) -
         ('TOPPADDING', (0,0), (-1,-1), 5),
     ]))
     story.append(metrics_table)
+    story.append(Spacer(1, 0.05 * inch))
+    story.append(Paragraph(FILLER_NOTE, ParagraphStyle('Note', parent=body_style, fontSize=8, textColor=colors.HexColor('#64748b'))))
 
     # Microphone check (from raw RMS; not part of any score)
     warning = recording_warning(evaluation.rms_energy)

@@ -248,13 +248,18 @@ with col_right:
                 # Simple fluency display
                 fluency_display = 100.0 - (eval_res["filler_words_ratio"] * 4.0)
                 fluency_display = max(10.0, min(100.0, fluency_display))
+                pause_display = eval_res.get("pause_ratio_v1")
+                if pause_display is None:
+                    pause_display = eval_res["pause_ratio"]
                 st.html(f"""
                 <div class='glass-card' style='padding:15px !important; margin:0 !important; border-color: rgba(0, 255, 102, 0.2) !important; text-align:center;'>
                     <div class='metric-label'>Speech Fluency</div>
                     <div class='metric-value green'>{fluency_display:.0f}%</div>
-                    <div style='font-size:0.8rem; color:#00ff66;'>P: {eval_res['pause_ratio']*100:.0f}% | F: {eval_res['filler_words_count']}</div>
+                    <div style='font-size:0.8rem; color:#00ff66;'>P: {pause_display*100:.0f}% | Fillers (exp.): {eval_res['filler_words_count']}</div>
                 </div>
                 """)
+            
+            st.caption("Filler counts are experimental — speech-to-text usually removes 'um/uh'. Not used in scoring.")
             
             # Microphone check (from raw RMS; not part of any score)
             if eval_res.get("recording_warning"):
@@ -403,7 +408,7 @@ if history:
                 <th style='padding: 10px;'>Overall Score</th>
                 <th style='padding: 10px;'>Grade</th>
                 <th style='padding: 10px;'>Duration</th>
-                <th style='padding: 10px;'>Filler Words</th>
+                <th style='padding: 10px;'>Filler Words (experimental)</th>
                 <th style='padding: 10px;'>Inspect</th>
             </tr>
         </thead>

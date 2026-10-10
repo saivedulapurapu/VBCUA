@@ -18,7 +18,8 @@ class Evaluation(Base):
     # Speech Fluency Metrics
     filler_words_count = Column(Integer, default=0)
     filler_words_ratio = Column(Float, default=0.0)  # fillers per 100 words
-    pause_ratio = Column(Float, default=0.0)         # portion of audio that is silent
+    pause_ratio = Column(Float, default=0.0)         # B0: silent share of the whole clip
+    pause_ratio_v1 = Column(Float, nullable=True)    # v1: silent share between first and last speech
     rms_energy = Column(Float, default=0.0)          # speaking volume/intensity metric
     speech_duration = Column(Float, default=0.0)     # duration in seconds
     

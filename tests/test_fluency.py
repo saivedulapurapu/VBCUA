@@ -30,11 +30,31 @@ def test_b0_keeps_old_volume_deduction():
 
 
 @pytest.mark.parametrize("filler_ratio, pause_ratio", [(1.0, 0.15), (5.0, 0.40), (3.0, 0.02), (20.0, 0.9)])
-def test_v1_matches_b0_for_normal_volume(filler_ratio, pause_ratio):
+def test_v1_pause_deduction_matches_b0(filler_ratio, pause_ratio):
     v1 = evaluation.compute_fluency_score(filler_ratio, pause_ratio, rms_energy=NORMAL)
     b0 = evaluation.compute_fluency_score(filler_ratio, pause_ratio, rms_energy=NORMAL, method="b0")
+    assert v1["deductions"].get("pause_ratio") == b0["deductions"].get("pause_ratio")
+
+
+@pytest.mark.parametrize("pause_ratio", [0.15, 0.40, 0.02, 0.9])
+def test_v1_matches_b0_without_fillers_at_normal_volume(pause_ratio):
+    v1 = evaluation.compute_fluency_score(0.0, pause_ratio, rms_energy=NORMAL)
+    b0 = evaluation.compute_fluency_score(0.0, pause_ratio, rms_energy=NORMAL, method="b0")
     assert v1["fluency_score"] == b0["fluency_score"]
-    assert v1["deductions"] == b0["deductions"]
+
+
+def test_v1_ignores_fillers():
+    result = evaluation.compute_fluency_score(20.0, 0.15)
+    assert result["fluency_score"] == 100.0
+    assert "filler_words" not in result["deductions"]
+    assert not any("filler" in obs.lower() for obs in result["observations"])
+
+
+def test_b0_unchanged_with_fillers():
+    # 100 - (5 - 2) * 4 [fillers] - (0.40 - 0.30) * 100 [pauses] = 78
+    result = evaluation.compute_fluency_score(5.0, 0.40, rms_energy=NORMAL, method="b0")
+    assert result["fluency_score"] == 78.0
+    assert result["deductions"] == {"filler_words": 12.0, "pause_ratio": 10.0}
 
 
 def test_b0_requires_rms():
@@ -78,13 +98,14 @@ SEMANTIC = {
 }
 
 
-def test_rule_based_feedback_has_no_volume():
-    fluency = evaluation.compute_fluency_score(1.0, 0.15, rms_energy=QUIET)
-    feedback = evaluation.generate_rule_based_feedback("ML", SEMANTIC, fluency)
-    assert "volume" not in feedback.lower()
+def test_rule_based_feedback_has_no_volume_or_fillers():
+    fluency = evaluation.compute_fluency_score(20.0, 0.15, rms_energy=QUIET)
+    feedback = evaluation.generate_rule_based_feedback("ML", SEMANTIC, fluency).lower()
+    assert "volume" not in feedback
+    assert "filler" not in feedback
 
 
-def test_llm_prompt_has_no_volume(monkeypatch):
+def test_llm_prompt_has_no_volume_or_fillers(monkeypatch):
     captured = {}
 
     def fake_generate_text(prompt, **kwargs):
@@ -92,6 +113,7 @@ def test_llm_prompt_has_no_volume(monkeypatch):
         return "ok"
 
     monkeypatch.setattr(llm_client, "generate_text", fake_generate_text)
-    fluency = evaluation.compute_fluency_score(1.0, 0.15, rms_energy=QUIET)
+    fluency = evaluation.compute_fluency_score(20.0, 0.15, rms_energy=QUIET)
     evaluation.generate_ai_feedback("ML", "reference", "transcript", SEMANTIC, fluency)
     assert "volume" not in captured["prompt"].lower()
+    assert "filler" not in captured["prompt"].lower()
