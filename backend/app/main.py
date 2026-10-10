@@ -58,22 +58,28 @@ def startup_db_setup():
     logger.info("Initializing database and tables...")
     Base.metadata.create_all(bind=engine)
     
-    # Dynamic database migration for existing tables (adds final_score if missing)
-    db = next(get_db())
-    try:
-        # Check if column exists by querying it
-        db.execute(text("SELECT final_score FROM evaluations LIMIT 1"))
-    except Exception:
-        db.rollback()
-        logger.info("Database migration: final_score column missing. Appending it...")
+    # Dynamic database migration for existing tables (adds columns if missing)
+    added_columns = {
+        "final_score": "FLOAT DEFAULT 0.0",
+        "asr_model": "VARCHAR(50)",
+        "asr_confidence": "FLOAT",
+    }
+    for column, column_type in added_columns.items():
+        db = next(get_db())
         try:
-            db.execute(text("ALTER TABLE evaluations ADD COLUMN final_score FLOAT DEFAULT 0.0"))
-            db.commit()
-            logger.info("Database migration: final_score column successfully added.")
-        except Exception as err:
-            logger.error(f"Failed to add final_score column: {err}")
-    finally:
-        db.close()
+            # Check if column exists by querying it
+            db.execute(text(f"SELECT {column} FROM evaluations LIMIT 1"))
+        except Exception:
+            db.rollback()
+            logger.info(f"Database migration: {column} column missing. Appending it...")
+            try:
+                db.execute(text(f"ALTER TABLE evaluations ADD COLUMN {column} {column_type}"))
+                db.commit()
+                logger.info(f"Database migration: {column} column successfully added.")
+            except Exception as err:
+                logger.error(f"Failed to add {column} column: {err}")
+        finally:
+            db.close()
     
     # Seed default concepts if table is empty
     db = next(get_db())
@@ -174,7 +180,8 @@ def evaluate_audio(
     # Evaluation Pipeline
     try:
         # Step A: Speech-to-Text Transcription
-        transcription = transcribe_audio(audio_path)
+        asr_result = transcribe_audio(audio_path)
+        transcription = asr_result["text"]
         if not transcription.strip():
             # If transcription is empty
             transcription = "[No speech detected or transcription failed]"
@@ -215,6 +222,8 @@ def evaluate_audio(
         db_evaluation = Evaluation(
             concept_id=concept_id,
             transcription=transcription,
+            asr_model=asr_result["asr_model"],
+            asr_confidence=asr_result["asr_confidence"],
             semantic_score=semantic_metrics["similarity_score"],
             filler_words_count=audio_metrics["filler_words_count"],
             filler_words_ratio=audio_metrics["filler_words_ratio"],

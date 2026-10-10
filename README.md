@@ -11,7 +11,7 @@ VBCUA is an AI-powered web application designed to evaluate how effectively user
 ## Key Features
 
 1. **Semantic Concept Evaluation**
-   - Transcribes audio explanations using **OpenAI Whisper** (local) with a fallback to **Google Gemini 1.5 Flash**.
+   - Transcribes audio explanations using local **OpenAI Whisper** (`small` by default). An optional **Google Gemini** fallback is used only if Whisper fails and `STT_GEMINI_FALLBACK=true`. The ASR model used is saved with every attempt.
    - Compares the explanation to predefined reference definitions using **Sentence-BERT (S-BERT)** semantic embeddings.
    - Evaluates keyword coverage against essential terms.
    - Assigns qualitative grades: *Strong Understanding*, *Moderate Understanding*, or *Poor Understanding*.
@@ -88,7 +88,10 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/vbcua_db
 GEMINI_API_KEY=gemini_api_key_here
 
 # Whisper model size (tiny, base, small, medium, large)
-WHISPER_MODEL=base
+WHISPER_MODEL=small
+
+# Fall back to Gemini transcription if local Whisper fails
+STT_GEMINI_FALLBACK=false
 ```
 
 ### Step 3: Install Dependencies

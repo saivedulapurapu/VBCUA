@@ -11,6 +11,8 @@ class Evaluation(Base):
     
     # Textual evaluation
     transcription = Column(Text, nullable=False)
+    asr_model = Column(String(50), nullable=True)       # e.g. "whisper-small"
+    asr_confidence = Column(Float, nullable=True)       # mean Whisper avg_logprob over segments
     semantic_score = Column(Float, nullable=False)  # Similarity out of 100
     
     # Speech Fluency Metrics

@@ -13,6 +13,8 @@ class EvaluationResponse(BaseModel):
     id: int
     concept_id: int
     transcription: str
+    asr_model: Optional[str] = None
+    asr_confidence: Optional[float] = None
     semantic_score: float
     filler_words_count: int
     filler_words_ratio: float
