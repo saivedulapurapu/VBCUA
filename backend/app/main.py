@@ -9,7 +9,7 @@ from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Res
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from datetime import datetime, timedelta
-from sqlalchemy import or_, text
+from sqlalchemy import case, or_, text
 from sqlalchemy.orm import Session
 from typing import List, Optional
 
@@ -196,7 +196,13 @@ def create_concept(concept: ConceptCreate, db: Session = Depends(get_db)):
 
 @app.get("/api/concepts", response_model=List[ConceptResponse])
 def list_concepts(db: Session = Depends(get_db)):
-    return db.query(ReferenceConcept).order_by(ReferenceConcept.title).all()
+    """Curated library concepts first, then user-added ones, then AI-generated topics; by title within each."""
+    group = case(
+        (ReferenceConcept.source == "ai-generated", 2),
+        (ReferenceConcept.source == "custom", 1),
+        else_=0,
+    )
+    return db.query(ReferenceConcept).order_by(group, ReferenceConcept.title).all()
 
 
 @app.get("/api/concepts/{concept_id}", response_model=ConceptResponse)

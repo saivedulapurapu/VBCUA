@@ -104,7 +104,7 @@ export function ConceptPicker({ concepts, selectedId, onSelect }: Props) {
             </ul>
           )}
         </div>
-        <button type="button" className="btn" onClick={surprise} disabled={concepts.length < 2} title="Pick a random concept">
+        <button type="button" className="btn" onClick={surprise} disabled={concepts.filter((c) => c.source !== 'ai-generated').length < 2} title="Pick a random concept">
           <Shuffle size={16} aria-hidden /> Surprise me
         </button>
       </div>

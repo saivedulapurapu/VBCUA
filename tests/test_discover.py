@@ -297,3 +297,19 @@ def test_generate_endpoint_reports_exhausted_quota(client, gemini, monkeypatch):
     response = client.post("/api/concepts/generate", json={"topic": "T20 Cricket"})
     assert response.status_code == 429
     assert "quota" in response.json()["detail"]
+
+
+def test_concept_list_puts_library_first(client, db):
+    db.add_all([
+        ReferenceConcept(title="Aardvarks", description="d", keywords=["x"], source="ai-generated"),
+        ReferenceConcept(title="Zebra crossings", description="d", keywords=["x"], source="library"),
+        ReferenceConcept(title="Bridges", description="d", keywords=["x"], source="custom"),
+        ReferenceConcept(title="Algorithms", description="d", keywords=["x"], source=None),  # older row = library
+    ])
+    db.commit()
+    titles = [c["title"] for c in client.get("/api/concepts").json()]
+    assert titles == ["Algorithms", "Zebra crossings", "Bridges", "Aardvarks"]
+
+
+def test_reference_prompt_asks_for_correct_spelling():
+    assert "properly spelled" in discover.reference_prompt("bahubali movie", DAY)

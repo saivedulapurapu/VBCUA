@@ -216,7 +216,7 @@ that their explanation will be compared with. If the topic is about current even
 Topic: {topic}
 
 Return ONLY a JSON object, no other text:
-{{"title": "clear topic title (max 8 words)",
+{{"title": "the topic's correct, properly spelled name (fix any spelling mistakes in the topic above; max 8 words)",
   "description": "a factual, neutral reference explanation of 80-150 words covering the key ideas a good explanation should include",
   "keywords": ["5 to 8 short key terms (1-3 words each) that a good explanation should mention"]}}"""
 
