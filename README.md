@@ -92,8 +92,10 @@ cp .env.template .env
 ```
 Inside `.env`, configure your settings:
 ```ini
-# Database configuration (Defaults to PostgreSQL, falls back to SQLite vbcua.db)
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/vbcua_db
+# Database: SQLite (local vbcua.db file) by default
+DATABASE_URL=sqlite:///./vbcua.db
+# Optional PostgreSQL (uses the psycopg2 driver from requirements):
+# DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/vbcua_db
 
 # Google Gemini API Key (Required for advanced AI feedback summaries)
 GEMINI_API_KEY=gemini_api_key_here
@@ -126,7 +128,7 @@ pip install -r frontend/requirements.txt
 
 ## Running the Application
 
-VBCUA comes with an orchestrator script `run.py` that will verify your `.env` configuration, ensure your target database exists (with self-healing migrations), and start both services in parallel.
+VBCUA comes with an orchestrator script `run.py` that will verify your `.env` configuration, create the PostgreSQL database if a `postgresql` URL is configured (skipped for SQLite), and start both services in parallel. Missing columns are added to existing databases at backend startup.
 
 Run the launcher:
 ```bash
@@ -169,7 +171,7 @@ The tests stub Whisper, Sentence-BERT and Gemini, so they need no model download
 ## Pipeline & Tech Stack
 
 - **Frameworks**: FastAPI (Backend) & Streamlit (Frontend)
-- **Database**: PostgreSQL (Production) / SQLite (Fallback) via SQLAlchemy ORM
+- **Database**: SQLite by default; PostgreSQL optional (`postgresql+psycopg2://` URL) via SQLAlchemy ORM
 - **Speech processing**: OpenAI Whisper (optional Google Gemini fallback)
 - **AI feedback**: Google Gemini via the `google-genai` SDK, with a rule-based fallback
 - **NLP / Semantics**: Sentence-Transformers (`all-MiniLM-L6-v2`)

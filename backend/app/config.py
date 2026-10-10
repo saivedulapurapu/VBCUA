@@ -3,9 +3,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
 class Settings(BaseSettings):
-    # PostgreSQL Connection String
+    # Database URL: SQLite by default; PostgreSQL is optional
+    # (e.g. postgresql+psycopg2://postgres:postgres@localhost:5432/vbcua_db)
     DATABASE_URL: str = Field(
-        default="postgresql://postgres:postgres@localhost:5432/vbcua_db",
+        default="sqlite:///./vbcua.db",
         validation_alias="DATABASE_URL"
     )
     
