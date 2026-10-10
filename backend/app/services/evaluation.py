@@ -190,7 +190,9 @@ def evaluate_explanation(
         grade = "Poor Understanding"
 
     # Generate feedback (LLM with rule-based fallback)
-    feedback = ""
+    feedback = None
+    feedback_source = "rule-based"
+    llm_model = None
     if llm_client.is_configured():
         try:
             feedback = generate_ai_feedback(
@@ -200,14 +202,17 @@ def evaluate_explanation(
                 semantic_result=semantic_result,
                 fluency_result=fluency_result
             )
+            feedback_source = "llm"
+            llm_model = llm_client.model_name()
         except Exception as e:
             logger.error(f"LLM feedback generation failed, using rule-based generator: {e}")
-            feedback = generate_rule_based_feedback(concept_title, semantic_result, fluency_result)
-    else:
+    if feedback is None:
         feedback = generate_rule_based_feedback(concept_title, semantic_result, fluency_result)
 
     return {
         "final_score": final_score,
         "understanding_grade": grade,
-        "feedback": feedback
+        "feedback": feedback,
+        "feedback_source": feedback_source,
+        "llm_model": llm_model
     }

@@ -54,3 +54,21 @@ def test_llm_failure_falls_back_to_rule_based(llm):
 
 def test_llm_feedback_used_when_available(llm):
     assert evaluate()["feedback"] == "LLM feedback"
+
+
+def test_feedback_source_no_key(llm):
+    llm["configured"] = False
+    result = evaluate()
+    assert (result["feedback_source"], result["llm_model"]) == ("rule-based", None)
+
+
+def test_feedback_source_llm_failure(llm):
+    llm["fail"] = True
+    result = evaluate()
+    assert (result["feedback_source"], result["llm_model"]) == ("rule-based", None)
+
+
+def test_feedback_source_llm(llm, monkeypatch):
+    monkeypatch.setattr(llm_client, "model_name", lambda: "gemini-test-model")
+    result = evaluate()
+    assert (result["feedback_source"], result["llm_model"]) == ("llm", "gemini-test-model")

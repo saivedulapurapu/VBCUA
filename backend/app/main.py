@@ -44,21 +44,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Database Startup Actions
-@app.on_event("startup")
-def startup_db_setup():
-    logger.info("Initializing database and tables...")
-    Base.metadata.create_all(bind=engine)
-    
-    # Dynamic database migration for existing tables (adds columns if missing)
-    added_columns = {
-        "final_score": "FLOAT DEFAULT 0.0",
-        "asr_model": "VARCHAR(50)",
-        "asr_confidence": "FLOAT",
-        "pause_ratio_v1": "FLOAT",
-    }
-    for column, column_type in added_columns.items():
-        db = next(get_db())
+# Columns added after the first release; old rows get NULL (or the default given)
+ADDED_EVALUATION_COLUMNS = {
+    "final_score": "FLOAT DEFAULT 0.0",
+    "asr_model": "VARCHAR(50)",
+    "asr_confidence": "FLOAT",
+    "pause_ratio_v1": "FLOAT",
+    "cosine_similarity": "FLOAT",
+    "keyword_coverage": "FLOAT",
+    "mentioned_keywords": "JSON",
+    "missing_keywords": "JSON",
+    "understanding_score": "FLOAT",
+    "semantic_method": "VARCHAR(10)",
+    "fluency_score": "FLOAT",
+    "fluency_method": "VARCHAR(10)",
+    "feedback_source": "VARCHAR(20)",
+    "llm_model": "VARCHAR(50)",
+}
+
+def migrate_evaluations_table(session_factory):
+    """Dynamic database migration for existing tables (adds columns if missing)."""
+    for column, column_type in ADDED_EVALUATION_COLUMNS.items():
+        db = session_factory()
         try:
             # Check if column exists by querying it
             db.execute(text(f"SELECT {column} FROM evaluations LIMIT 1"))
@@ -73,7 +80,14 @@ def startup_db_setup():
                 logger.error(f"Failed to add {column} column: {err}")
         finally:
             db.close()
-    
+
+# Database Startup Actions
+@app.on_event("startup")
+def startup_db_setup():
+    logger.info("Initializing database and tables...")
+    Base.metadata.create_all(bind=engine)
+    migrate_evaluations_table(lambda: next(get_db()))
+
     # Seed default concepts if table is empty
     db = next(get_db())
     try:
@@ -217,6 +231,14 @@ def evaluate_audio(
             asr_model=asr_result["asr_model"],
             asr_confidence=asr_result["asr_confidence"],
             semantic_score=semantic_metrics["similarity_score"],
+            cosine_similarity=semantic_metrics["cosine_similarity"],
+            keyword_coverage=semantic_metrics["keyword_coverage"],
+            mentioned_keywords=semantic_metrics["mentioned_keywords"],
+            missing_keywords=semantic_metrics["missing_keywords"],
+            understanding_score=semantic_metrics["combined_score"],
+            semantic_method=semantic_metrics["scoring_method"],
+            fluency_score=fluency_metrics["fluency_score"],
+            fluency_method=fluency_metrics["scoring_method"],
             filler_words_count=audio_metrics["filler_words_count"],
             filler_words_ratio=audio_metrics["filler_words_ratio"],
             pause_ratio=audio_metrics["pause_ratio"],
@@ -226,6 +248,8 @@ def evaluate_audio(
             final_score=evaluation_result["final_score"],
             understanding_grade=evaluation_result["understanding_grade"],
             feedback=evaluation_result["feedback"],
+            feedback_source=evaluation_result["feedback_source"],
+            llm_model=evaluation_result["llm_model"],
             audio_path=audio_path
         )
         db.add(db_evaluation)
