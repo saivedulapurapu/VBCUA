@@ -9,6 +9,7 @@ The following appear in the June 2026 documents but are not part of the code:
 
 - User registration, login and student accounts. The application has no authentication; all attempts are stored in one shared history, and no student details are stored.
 - The endpoints `/register`, `/login`, `/upload`, `/transcribe`, `/feedback` and `/report`.
+  AI feedback is now generated through `POST /api/evaluations/{eval_id}/feedback` (see below), not a `/feedback` endpoint.
 
 | Document | Content that differs from the code |
 |---|---|
@@ -30,6 +31,7 @@ The implemented API has these routes:
 | POST | `/api/evaluate` | Upload audio and run the evaluation pipeline |
 | GET | `/api/evaluations` | List past attempts |
 | GET | `/api/evaluations/{eval_id}` | Get one attempt |
+| POST | `/api/evaluations/{eval_id}/feedback` | Generate AI feedback for an attempt (safe to call twice) |
 | GET | `/api/evaluations/{eval_id}/pdf` | Download the PDF report for an attempt |
 
 ## Test reports

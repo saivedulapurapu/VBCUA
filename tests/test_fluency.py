@@ -117,3 +117,12 @@ def test_llm_prompt_has_no_volume_or_fillers(monkeypatch):
     evaluation.generate_ai_feedback("ML", "reference", "transcript", SEMANTIC, fluency)
     assert "volume" not in captured["prompt"].lower()
     assert "filler" not in captured["prompt"].lower()
+
+
+def test_llm_prompt_asks_for_concise_small_headings(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(llm_client, "generate_text", lambda prompt, **kw: captured.setdefault("prompt", prompt) or "ok")
+    fluency = evaluation.compute_fluency_score(0.0, 0.15)
+    evaluation.generate_ai_feedback("ML", "reference", "transcript", SEMANTIC, fluency)
+    assert "200–250 words" in captured["prompt"]
+    assert '"####"' in captured["prompt"]

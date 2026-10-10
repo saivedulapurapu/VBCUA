@@ -15,6 +15,16 @@ class Settings(BaseSettings):
 
     # Gemini model used for all LLM calls (pinned for reproducible results)
     GEMINI_MODEL: str = Field(default="gemini-3.8-flash", validation_alias="GEMINI_MODEL")
+
+    # Gemini model for written feedback (GEMINI_MODEL stays for the rubric grader)
+    GEMINI_FEEDBACK_MODEL: str = Field(default="gemini-3.5-flash-lite", validation_alias="GEMINI_FEEDBACK_MODEL")
+
+    # Gemini thinking effort: minimal, low, medium or high ("" = model default).
+    # Low keeps feedback fast; it does not affect any score.
+    GEMINI_THINKING_LEVEL: str = Field(default="low", validation_alias="GEMINI_THINKING_LEVEL")
+
+    # Load Whisper and Sentence-BERT in the background at startup so the first attempt is not slowed down
+    PRELOAD_MODELS: bool = Field(default=True, validation_alias="PRELOAD_MODELS")
     
     # Whisper Speech-to-Text Model Size
     WHISPER_MODEL: str = Field(default="small", validation_alias="WHISPER_MODEL")

@@ -38,6 +38,9 @@ class Evaluation(Base):
     feedback = Column(Text, nullable=False)                   # Qualitative AI feedback
     feedback_source = Column(String(20), nullable=True)       # "llm" / "rule-based"
     llm_model = Column(String(50), nullable=True)             # None when rule-based
+    feedback_status = Column(String(20), nullable=True)       # pending / generating / done / failed / unavailable
+    feedback_started_at = Column(DateTime, nullable=True)     # when the current Gemini request started
+    feedback_seconds = Column(Float, nullable=True)           # how long the Gemini feedback call took
     audio_path = Column(String(500), nullable=True)           # Path to saved audio file
     created_at = Column(DateTime, default=datetime.utcnow)
 

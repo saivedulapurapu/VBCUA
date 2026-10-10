@@ -36,6 +36,8 @@ class EvaluationResponse(BaseModel):
     feedback: str
     feedback_source: Optional[str] = None
     llm_model: Optional[str] = None
+    feedback_status: Optional[str] = None
+    feedback_seconds: Optional[float] = None
     audio_path: Optional[str] = None
     created_at: datetime
     concept: Optional[ConceptResponse] = None

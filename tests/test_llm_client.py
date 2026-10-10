@@ -51,6 +51,7 @@ def client(monkeypatch):
     monkeypatch.setattr(llm_client, "_get_client", lambda: holder["client"])
     monkeypatch.setattr(settings, "GEMINI_API_KEY", "fake-key")
     monkeypatch.setattr(settings, "GEMINI_MODEL", "gemini-test-model")
+    monkeypatch.setattr(settings, "GEMINI_THINKING_LEVEL", "low")
     configure.get = lambda: holder["client"]
     return configure
 
@@ -70,7 +71,7 @@ def test_generate_text_uses_configured_model(client):
     call = fake.models.calls[0]
     assert call["model"] == "gemini-test-model"
     assert call["contents"] == "prompt"
-    assert call["config"] == {"system_instruction": "be kind", "temperature": 0.2}
+    assert call["config"] == {"system_instruction": "be kind", "temperature": 0.2, "thinking_config": {"thinking_level": "LOW"}}
 
 
 def test_generate_json_with_pydantic_schema(client):
@@ -139,3 +140,100 @@ def test_audio_upload_deleted_after_failure(client):
     with pytest.raises(llm_client.LLMError):
         llm_client.generate_from_audio("clip.wav", "transcribe")
     assert fake.files.deleted == ["files/abc"]
+
+
+# --- Retries on temporary Gemini errors (real google-genai error classes) ---
+
+from google.genai import errors as genai_errors  # noqa: E402
+
+
+class FlakyModels:
+    """Raises the given errors in order, then returns text."""
+
+    def __init__(self, failures, text="recovered"):
+        self.failures = list(failures)
+        self.text = text
+        self.calls = 0
+
+    def generate_content(self, *, model, contents, config):
+        self.calls += 1
+        if self.failures:
+            raise self.failures.pop(0)
+        return SimpleNamespace(text=self.text)
+
+
+def server_error(code):
+    cls = genai_errors.ServerError if code >= 500 else genai_errors.ClientError
+    return cls(code, {"error": {"code": code, "message": "high demand", "status": "UNAVAILABLE"}})
+
+
+@pytest.fixture
+def flaky(monkeypatch):
+    sleeps = []
+    monkeypatch.setattr(llm_client, "_sleep", sleeps.append)
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "fake-key")
+
+    def install(failures):
+        models = FlakyModels(failures)
+        monkeypatch.setattr(llm_client, "_get_client", lambda: SimpleNamespace(models=models))
+        return models
+
+    install.sleeps = sleeps
+    return install
+
+
+@pytest.mark.parametrize("code", [503, 429, 500])
+def test_retries_temporary_errors_then_succeeds(flaky, code):
+    models = flaky([server_error(code), server_error(code)])
+    assert llm_client.generate_text("p") == "recovered"
+    assert models.calls == 3
+    assert flaky.sleeps == list(llm_client.RETRY_DELAYS_S)
+
+
+def test_gives_up_after_retries(flaky):
+    models = flaky([server_error(503)] * 5)
+    with pytest.raises(llm_client.LLMError):
+        llm_client.generate_text("p")
+    assert models.calls == 1 + len(llm_client.RETRY_DELAYS_S)
+
+
+@pytest.mark.parametrize("error", [server_error(400), server_error(403), RuntimeError("bug")])
+def test_does_not_retry_permanent_errors(flaky, error):
+    models = flaky([error])
+    with pytest.raises(llm_client.LLMError):
+        llm_client.generate_text("p")
+    assert models.calls == 1
+    assert flaky.sleeps == []
+
+
+
+# --- Thinking level ---
+
+def test_default_thinking_level_is_low():
+    assert type(settings).model_fields["GEMINI_THINKING_LEVEL"].default == "low"
+
+
+@pytest.mark.parametrize("level, expected", [("high", {"thinking_level": "HIGH"}), ("minimal", {"thinking_level": "MINIMAL"})])
+def test_explicit_thinking_level(client, level, expected):
+    fake = client(text="ok")
+    llm_client.generate_text("p", thinking_level=level)
+    assert fake.models.calls[0]["config"]["thinking_config"] == expected
+
+
+def test_thinking_level_none_uses_model_default(client):
+    fake = client(text='{"a": 1}')
+    llm_client.generate_json("p", thinking_level=None)
+    assert "thinking_config" not in fake.models.calls[0]["config"]
+
+
+def test_empty_setting_uses_model_default(client, monkeypatch):
+    monkeypatch.setattr(settings, "GEMINI_THINKING_LEVEL", "")
+    fake = client(text="ok")
+    llm_client.generate_text("p")
+    assert "thinking_config" not in fake.models.calls[0]["config"]
+
+
+def test_thinking_config_accepted_by_sdk():
+    from google.genai import types
+    for level in ["minimal", "low", "medium", "high"]:
+        types.GenerateContentConfig(**llm_client._base_config("s", 0.2, level))

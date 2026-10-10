@@ -25,11 +25,12 @@ VBCUA is an AI-powered web application designed to evaluate how effectively user
    - The original formulas remain available as baseline `B0` (`method="b0"`) for research comparisons.
    - Every sub-score, the scoring methods, the ASR model and the feedback source (LLM or rule-based) are stored per attempt.
 
-3. **Interactive Reporting Dashboard**
-   - Displays real-time dark-cyber style waveform visualization of user recordings.
-   - Interactive gauge displays for scores and color-coded keyword badges.
-   - Historical evaluation timeline.
-   - Downloads styled assessment reports as **ReportLab PDFs**.
+3. **Dashboard**
+   - Three steps: choose a concept, record or upload an explanation, review the results. The selected concept and the open attempt are kept in the URL, so a page reload keeps them.
+   - Live progress while an attempt is analysed; clear error messages with technical details on demand.
+   - Results: overall, understanding and fluency scores with short explanations, and tabs for feedback, keywords, transcript and every stored sub-score.
+   - History table; selecting a row opens that attempt.
+   - Downloads assessment reports as **ReportLab PDFs**.
 
 There are no user accounts or login: all attempts are stored in one shared history. Login and registration appear in the June 2026 project documents as planned features; see [Scope and changes since June 2026](VBCUA_Documents/Scope_and_Changes.md).
 
@@ -56,9 +57,11 @@ VBCUA/
 │   └── requirements.txt       # Backend dependencies
 ├── frontend/
 │   ├── app.py                 # Streamlit frontend dashboard
+│   ├── api.py                 # Backend API calls with user-facing error messages
 │   ├── display.py             # Display helpers (stored scores, HTML escaping)
 │   ├── requirements.txt       # Frontend dependencies
-│   └── styles.css             # Premium glassmorphism dark-cyber CSS styles
+│   └── styles.css             # Small style additions to the light theme
+├── .streamlit/config.toml     # Streamlit theme (light) and toolbar settings
 ├── tests/                     # pytest suite (models and APIs stubbed)
 ├── research/data/             # Research data (git-ignored)
 ├── uploads/                   # Local store for audio uploads and generated PDFs
@@ -102,6 +105,15 @@ GEMINI_API_KEY=gemini_api_key_here
 
 # Gemini model for all LLM calls (see https://ai.google.dev/gemini-api/docs/models)
 GEMINI_MODEL=gemini-3.8-flash
+
+# Gemini model for written feedback (faster; GEMINI_MODEL is used for rubric grading)
+GEMINI_FEEDBACK_MODEL=gemini-3.5-flash-lite
+
+# Gemini thinking effort for feedback (minimal, low, medium, high; empty = model default)
+GEMINI_THINKING_LEVEL=low
+
+# Load Whisper and Sentence-BERT at backend startup
+PRELOAD_MODELS=true
 
 # Whisper model size (tiny, base, small, medium, large)
 WHISPER_MODEL=small
@@ -151,6 +163,7 @@ python run.py
 | POST | `/api/evaluate` | Upload audio and run the evaluation pipeline |
 | GET | `/api/evaluations` | List past attempts |
 | GET | `/api/evaluations/{eval_id}` | Get one attempt |
+| POST | `/api/evaluations/{eval_id}/feedback` | Generate AI feedback for an attempt (safe to call twice) |
 | GET | `/api/evaluations/{eval_id}/pdf` | Download the PDF report for an attempt |
 
 Interactive documentation is served at `/docs` while the backend is running.

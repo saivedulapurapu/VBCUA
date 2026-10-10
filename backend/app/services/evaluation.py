@@ -1,5 +1,7 @@
 import logging
+import time
 from typing import Dict, Any, List, Optional
+from backend.app.config import settings
 from backend.app.services import llm_client
 
 logger = logging.getLogger(__name__)
@@ -153,15 +155,19 @@ def generate_ai_feedback(
     - Speech analysis observations: [{observations}]
     - Fluency Score: {fluency_result['fluency_score']}/100
     
-    Please write a structured evaluation report. Use markdown formatting. Include the following sections:
-    1. **Conceptual Accuracy & Comprehension**: Discuss what they explained correctly, what they missed, and any misconceptions they showed.
-    2. **Speech Delivery & Fluency**: Analyze their pacing and pauses based on the observations.
-    3. **Key Suggestions for Improvement**: Provide 2-3 specific, actionable steps to help them explain this topic better next time.
-    
-    Keep the tone professional, encouraging, and constructive. Return ONLY the markdown formatted response.
+    Write concise feedback of about 200–250 words in markdown, with exactly these three sections.
+    Use "####" for the section headings; do not use "#", "##" or "###" headings and do not add a title.
+    #### Conceptual Accuracy
+    What they explained correctly, what they missed, and any misconceptions.
+    #### Delivery
+    One or two sentences on pacing and pauses, based on the observations.
+    #### Suggestions
+    2–3 specific, actionable steps to explain this topic better next time, as a bulleted list.
+
+    Keep the tone professional, encouraging, and constructive. Return ONLY the markdown.
     """
     
-    return llm_client.generate_text(prompt)
+    return llm_client.generate_text(prompt, model=settings.GEMINI_FEEDBACK_MODEL)
 
 def evaluate_explanation(
     concept_title: str,
@@ -171,8 +177,8 @@ def evaluate_explanation(
     fluency_result: Dict[str, Any]
 ) -> Dict[str, Any]:
     """
-    Main evaluation pipeline that calculates the overall grade, calls feedback generators,
-    and returns the final scoring summary.
+    Calculates the overall score and grade and attaches rule-based feedback.
+    AI feedback is generated separately (generate_llm_feedback) so scores are returned quickly.
     """
     # 70% understanding, 30% speech fluency
     understanding_score = semantic_result["combined_score"]
@@ -189,30 +195,45 @@ def evaluate_explanation(
     else:
         grade = "Poor Understanding"
 
-    # Generate feedback (LLM with rule-based fallback)
-    feedback = None
-    feedback_source = "rule-based"
-    llm_model = None
-    if llm_client.is_configured():
-        try:
-            feedback = generate_ai_feedback(
-                concept_title=concept_title,
-                reference_description=reference_description,
-                user_transcript=user_transcript,
-                semantic_result=semantic_result,
-                fluency_result=fluency_result
-            )
-            feedback_source = "llm"
-            llm_model = llm_client.model_name()
-        except Exception as e:
-            logger.error(f"LLM feedback generation failed, using rule-based generator: {e}")
-    if feedback is None:
-        feedback = generate_rule_based_feedback(concept_title, semantic_result, fluency_result)
-
+    # Rule-based feedback is always available at once; AI feedback may replace it later
     return {
         "final_score": final_score,
         "understanding_grade": grade,
-        "feedback": feedback,
-        "feedback_source": feedback_source,
-        "llm_model": llm_model
+        "feedback": generate_rule_based_feedback(concept_title, semantic_result, fluency_result),
+        "feedback_source": "rule-based",
+        "llm_model": None,
+        "feedback_status": FEEDBACK_PENDING if llm_client.is_configured() else FEEDBACK_UNAVAILABLE,
+    }
+
+
+# feedback_status values for an attempt
+FEEDBACK_PENDING = "pending"          # AI feedback not requested yet
+FEEDBACK_GENERATING = "generating"    # a request is calling Gemini now
+FEEDBACK_DONE = "done"                # AI feedback stored
+FEEDBACK_FAILED = "failed"            # Gemini failed; rule-based feedback kept
+FEEDBACK_UNAVAILABLE = "unavailable"  # no API key; rule-based feedback only
+
+
+def generate_llm_feedback(
+    concept_title: str,
+    reference_description: str,
+    user_transcript: str,
+    semantic_result: Dict[str, Any],
+    fluency_result: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Calls the feedback model once. Returns {"feedback", "llm_model", "feedback_seconds"}.
+    Raises llm_client.LLMError on failure (with the elapsed time on the exception).
+    """
+    start = time.perf_counter()
+    try:
+        text = generate_ai_feedback(concept_title, reference_description, user_transcript, semantic_result, fluency_result)
+    except Exception as e:
+        error = e if isinstance(e, llm_client.LLMError) else llm_client.LLMError(str(e))
+        error.feedback_seconds = round(time.perf_counter() - start, 2)
+        raise error from e
+    return {
+        "feedback": text,
+        "llm_model": settings.GEMINI_FEEDBACK_MODEL,
+        "feedback_seconds": round(time.perf_counter() - start, 2),
     }

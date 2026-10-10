@@ -71,3 +71,12 @@ def test_pdf_feedback_markdown_bold_still_renders(tmp_path):
     text = render(tmp_path, make_evaluation(feedback="This is **important** text"))
     assert b"**" not in text
     assert b"/F2 10 Tf (important) Tj" in text  # bold font (F2) applied to the **...** run
+
+
+def test_pdf_feedback_headings_bullets_and_rules(tmp_path):
+    feedback = "# Assessment Report\n---\n## Section\n* star bullet\n- dash bullet"
+    text = render(tmp_path, make_evaluation(feedback=feedback))
+    assert b"Assessment Report" in text
+    assert b"# Assessment" not in text
+    assert b"---" not in text
+    assert b"star bullet" in text and b"* star" not in text

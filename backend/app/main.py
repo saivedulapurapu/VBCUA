@@ -1,11 +1,14 @@
 import os
 import shutil
+import threading
+import time
 import uuid
 import logging
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from sqlalchemy import text
+from datetime import datetime, timedelta
+from sqlalchemy import or_, text
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -21,7 +24,11 @@ from backend.app.schemas.evaluation import EvaluationResponse
 from backend.app.services.speech_to_text import transcribe_audio
 from backend.app.services.audio_analysis import analyze_audio_features
 from backend.app.services.semantic import evaluate_semantic_understanding
-from backend.app.services.evaluation import compute_fluency_score, evaluate_explanation
+from backend.app.services import llm_client
+from backend.app.services.evaluation import (
+    FEEDBACK_DONE, FEEDBACK_FAILED, FEEDBACK_GENERATING, FEEDBACK_UNAVAILABLE,
+    compute_fluency_score, evaluate_explanation, generate_llm_feedback,
+)
 from backend.app.services.pdf_report import generate_pdf_report
 
 # Configure Logger
@@ -60,6 +67,9 @@ ADDED_EVALUATION_COLUMNS = {
     "fluency_method": "VARCHAR(10)",
     "feedback_source": "VARCHAR(20)",
     "llm_model": "VARCHAR(50)",
+    "feedback_status": "VARCHAR(20)",
+    "feedback_started_at": "TIMESTAMP",
+    "feedback_seconds": "FLOAT",
 }
 
 def migrate_evaluations_table(session_factory):
@@ -81,12 +91,28 @@ def migrate_evaluations_table(session_factory):
         finally:
             db.close()
 
+def preload_models(loaders=None):
+    """Loads Whisper and Sentence-BERT so the first attempt does not wait for them. Never raises."""
+    if loaders is None:
+        from backend.app.services.semantic import get_sbert_model
+        from backend.app.services.speech_to_text import get_whisper_model
+        loaders = {"Whisper": get_whisper_model, "Sentence-BERT": get_sbert_model}
+    for name, load in loaders.items():
+        start = time.time()
+        try:
+            load()
+            logger.info(f"Preloaded {name} in {time.time() - start:.1f}s")
+        except Exception as e:
+            logger.warning(f"Could not preload {name}: {e}")
+
 # Database Startup Actions
 @app.on_event("startup")
 def startup_db_setup():
     logger.info("Initializing database and tables...")
     Base.metadata.create_all(bind=engine)
     migrate_evaluations_table(lambda: next(get_db()))
+    if settings.PRELOAD_MODELS:
+        threading.Thread(target=preload_models, name="preload-models", daemon=True).start()
 
     # Seed default concepts if table is empty
     db = next(get_db())
@@ -250,6 +276,7 @@ def evaluate_audio(
             feedback=evaluation_result["feedback"],
             feedback_source=evaluation_result["feedback_source"],
             llm_model=evaluation_result["llm_model"],
+            feedback_status=evaluation_result["feedback_status"],
             audio_path=audio_path
         )
         db.add(db_evaluation)
@@ -283,6 +310,79 @@ def get_evaluation(eval_id: int, db: Session = Depends(get_db)):
     evaluation = db.query(Evaluation).filter(Evaluation.id == eval_id).first()
     if not evaluation:
         raise HTTPException(status_code=404, detail="Evaluation not found")
+    return evaluation
+
+
+# A "generating" claim older than this is treated as abandoned (e.g. the server restarted)
+STALE_FEEDBACK_SECONDS = 300
+
+
+@app.post("/api/evaluations/{eval_id}/feedback", response_model=EvaluationResponse)
+def generate_feedback(eval_id: int, db: Session = Depends(get_db)):
+    """
+    Generates AI feedback for a stored attempt and replaces the rule-based feedback.
+    Safe to call repeatedly: if the attempt already has AI feedback, or another request
+    is generating it, the current state is returned without calling Gemini again.
+    Scores and grade are never changed.
+    """
+    evaluation = db.query(Evaluation).filter(Evaluation.id == eval_id).first()
+    if not evaluation:
+        raise HTTPException(status_code=404, detail="Evaluation not found")
+    if evaluation.feedback_source == "llm":
+        return evaluation
+    if not llm_client.is_configured():
+        evaluation.feedback_status = FEEDBACK_UNAVAILABLE
+        db.commit()
+        db.refresh(evaluation)
+        return evaluation
+
+    # Atomically claim the attempt so two concurrent requests cannot both call Gemini
+    now = datetime.utcnow()
+    claimed = db.query(Evaluation).filter(
+        Evaluation.id == eval_id,
+        or_(Evaluation.feedback_source.is_(None), Evaluation.feedback_source != "llm"),
+        or_(
+            Evaluation.feedback_status.is_(None),
+            Evaluation.feedback_status != FEEDBACK_GENERATING,
+            Evaluation.feedback_started_at.is_(None),
+            Evaluation.feedback_started_at < now - timedelta(seconds=STALE_FEEDBACK_SECONDS),
+        ),
+    ).update({"feedback_status": FEEDBACK_GENERATING, "feedback_started_at": now}, synchronize_session=False)
+    db.commit()
+    db.refresh(evaluation)
+    if not claimed:
+        return evaluation
+
+    semantic_result = {
+        "similarity_score": evaluation.semantic_score,
+        "keyword_coverage": evaluation.keyword_coverage,
+        "mentioned_keywords": evaluation.mentioned_keywords or [],
+        "missing_keywords": evaluation.missing_keywords or [],
+        "combined_score": evaluation.understanding_score,
+    }
+    pause_ratio = evaluation.pause_ratio_v1 if evaluation.pause_ratio_v1 is not None else evaluation.pause_ratio
+    fluency_result = compute_fluency_score(evaluation.filler_words_ratio or 0.0, pause_ratio or 0.0)
+    try:
+        result = generate_llm_feedback(
+            concept_title=evaluation.concept.title,
+            reference_description=evaluation.concept.description,
+            user_transcript=evaluation.transcription,
+            semantic_result=semantic_result,
+            fluency_result=fluency_result,
+        )
+        evaluation.feedback = result["feedback"]
+        evaluation.feedback_source = "llm"
+        evaluation.llm_model = result["llm_model"]
+        evaluation.feedback_seconds = result["feedback_seconds"]
+        evaluation.feedback_status = FEEDBACK_DONE
+        logger.info(f"AI feedback for attempt {eval_id} from {result['llm_model']} in {result['feedback_seconds']}s")
+    except Exception as e:
+        evaluation.feedback_status = FEEDBACK_FAILED
+        evaluation.feedback_seconds = getattr(e, "feedback_seconds", None)
+        logger.error(f"AI feedback for attempt {eval_id} failed; rule-based feedback kept: {e}")
+    db.commit()
+    db.refresh(evaluation)
+    _ = evaluation.concept
     return evaluation
 
 

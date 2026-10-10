@@ -1,5 +1,6 @@
 import logging
 import re
+import threading
 import numpy as np
 from typing import Dict, Any, List, Tuple
 
@@ -7,14 +8,17 @@ logger = logging.getLogger(__name__)
 
 # Lazy load model
 _sbert_model = None
+# Startup preloading and a request may ask for the model at once
+_sbert_lock = threading.Lock()
 
 def get_sbert_model():
     global _sbert_model
-    if _sbert_model is None:
-        from sentence_transformers import SentenceTransformer
-        logger.info("Loading Sentence-BERT model (all-MiniLM-L6-v2)...")
-        _sbert_model = SentenceTransformer("all-MiniLM-L6-v2")
-    return _sbert_model
+    with _sbert_lock:
+        if _sbert_model is None:
+            from sentence_transformers import SentenceTransformer
+            logger.info("Loading Sentence-BERT model (all-MiniLM-L6-v2)...")
+            _sbert_model = SentenceTransformer("all-MiniLM-L6-v2")
+        return _sbert_model
 
 def calculate_cosine_similarity(vec1: np.ndarray, vec2: np.ndarray) -> float:
     """

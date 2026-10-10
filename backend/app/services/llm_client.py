@@ -5,6 +5,7 @@ import the SDK directly, so the provider or model can be swapped in one place.
 """
 import json
 import logging
+import time
 from typing import Any, Dict, Optional, Type, Union
 
 from pydantic import BaseModel, ValidationError
@@ -35,35 +36,73 @@ def is_configured() -> bool:
 def model_name() -> str:
     return settings.GEMINI_MODEL
 
-def _generate(contents: Any, config: Dict[str, Any]) -> str:
+# Temporary server-side errors ("high demand", rate limits) are retried with these delays
+RETRYABLE_STATUS = {429, 500, 503}
+RETRY_DELAYS_S = (2.0, 5.0)
+_sleep = time.sleep
+
+def _status_code(error: Exception) -> Optional[int]:
+    code = getattr(error, "code", None)
+    return code if isinstance(code, int) else None
+
+def _generate(contents: Any, config: Dict[str, Any], model: Optional[str] = None) -> str:
+    model = model or model_name()
     if not is_configured():
         raise LLMNotConfigured("GEMINI_API_KEY is not set")
-    try:
-        response = _get_client().models.generate_content(
-            model=model_name(),
-            contents=contents,
-            config=config,
-        )
-    except LLMError:
-        raise
-    except Exception as e:
-        raise LLMError(f"{model_name()} call failed: {e}") from e
+    attempt = 0
+    while True:
+        try:
+            response = _get_client().models.generate_content(
+                model=model,
+                contents=contents,
+                config=config,
+            )
+            break
+        except LLMError:
+            raise
+        except Exception as e:
+            status = _status_code(e)
+            if status in RETRYABLE_STATUS and attempt < len(RETRY_DELAYS_S):
+                delay = RETRY_DELAYS_S[attempt]
+                attempt += 1
+                logger.warning(f"{model} returned {status}; retry {attempt}/{len(RETRY_DELAYS_S)} in {delay:.0f}s")
+                _sleep(delay)
+                continue
+            raise LLMError(f"{model} call failed: {e}") from e
     text = (response.text or "").strip()
     if not text:
-        raise LLMError(f"{model_name()} returned an empty response")
+        raise LLMError(f"{model} returned an empty response")
     return text
 
-def _base_config(system: Optional[str], temperature: Optional[float]) -> Dict[str, Any]:
+# Sentinel: use settings.GEMINI_THINKING_LEVEL
+DEFAULT_THINKING = object()
+
+def _base_config(system: Optional[str], temperature: Optional[float], thinking_level: Any = DEFAULT_THINKING) -> Dict[str, Any]:
     config: Dict[str, Any] = {}
     if system:
         config["system_instruction"] = system
     if temperature is not None:
         config["temperature"] = temperature
+    level = settings.GEMINI_THINKING_LEVEL if thinking_level is DEFAULT_THINKING else thinking_level
+    if level:
+        config["thinking_config"] = {"thinking_level": str(level).upper()}
     return config
 
-def generate_text(prompt: str, *, system: Optional[str] = None, temperature: Optional[float] = None) -> str:
-    """Returns the model's plain-text answer to the prompt."""
-    return _generate(prompt, _base_config(system, temperature))
+def generate_text(
+    prompt: str,
+    *,
+    system: Optional[str] = None,
+    temperature: Optional[float] = None,
+    thinking_level: Any = DEFAULT_THINKING,
+    model: Optional[str] = None,
+) -> str:
+    """
+    Returns the model's plain-text answer to the prompt.
+    thinking_level: "minimal" / "low" / "medium" / "high", None for the model default,
+    or omitted to use settings.GEMINI_THINKING_LEVEL.
+    model: overrides settings.GEMINI_MODEL for this call (e.g. the feedback model).
+    """
+    return _generate(prompt, _base_config(system, temperature, thinking_level), model)
 
 def generate_json(
     prompt: str,
@@ -71,12 +110,14 @@ def generate_json(
     schema: Union[Type[BaseModel], Dict[str, Any], None] = None,
     system: Optional[str] = None,
     temperature: Optional[float] = 0.0,
+    thinking_level: Any = DEFAULT_THINKING,
 ) -> Dict[str, Any]:
     """
     Returns the model's answer parsed as JSON.
     schema: a Pydantic model (output is validated against it) or a JSON-schema dict.
+    thinking_level: as for generate_text.
     """
-    config = _base_config(system, temperature)
+    config = _base_config(system, temperature, thinking_level)
     config["response_mime_type"] = "application/json"
     is_model = isinstance(schema, type) and issubclass(schema, BaseModel)
     if schema is not None:
