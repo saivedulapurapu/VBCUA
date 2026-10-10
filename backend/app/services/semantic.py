@@ -1,7 +1,7 @@
 import logging
 import re
 import numpy as np
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,52 @@ SIMILARITY_METHODS = {
     "b0": similarity_from_cosine_b0,
 }
 
+def _word_forms(word: str) -> List[str]:
+    """Singular/plural variants by an optional trailing "s"/"es" (no stemming)."""
+    if not word[-1:].isalpha():
+        return [word]
+    forms = {word, word + "s", word + "es"}
+    if word.endswith("es"):
+        forms.add(word[:-2])
+    if word.endswith("s"):
+        forms.add(word[:-1])
+    return sorted(forms, key=len, reverse=True)
+
+def keyword_pattern_v1(keyword: str) -> str:
+    """
+    Whole-word, case-insensitive pattern for a keyword. Hyphens and spaces between
+    words are interchangeable ("on-demand" == "on demand"), and the last word may be
+    singular or plural. No substring matching.
+    """
+    words = [w for w in re.split(r"[\s-]+", keyword.lower().strip()) if w]
+    if not words:
+        return r"(?!)"
+    parts = [re.escape(w) for w in words[:-1]]
+    parts.append("(?:" + "|".join(re.escape(f) for f in _word_forms(words[-1])) + ")")
+    return r"(?<!\w)" + r"[\s-]+".join(parts) + r"(?!\w)"
+
+def _keyword_found_b0(keyword: str, clean_transcript: str) -> bool:
+    """Baseline B0 (original): word boundaries OR any substring ("data" matches "database")."""
+    pattern = r'\b' + re.escape(keyword.lower()) + r'\b'
+    return bool(re.search(pattern, clean_transcript)) or keyword.lower() in clean_transcript
+
+def match_keywords(transcript: str, keywords: List[str], method: str = "v1") -> Tuple[List[str], List[str]]:
+    """
+    Returns (mentioned_keywords, missing_keywords).
+    method: "v1" (whole-word, see keyword_pattern_v1) or "b0" (original substring fallback).
+    """
+    if method not in SIMILARITY_METHODS:
+        raise ValueError(f"Unknown keyword method: {method!r}")
+    clean_transcript = transcript.lower()
+    mentioned, missing = [], []
+    for keyword in keywords:
+        if method == "b0":
+            found = _keyword_found_b0(keyword, clean_transcript)
+        else:
+            found = re.search(keyword_pattern_v1(keyword), clean_transcript) is not None
+        (mentioned if found else missing).append(keyword)
+    return mentioned, missing
+
 def evaluate_semantic_understanding(
     user_transcript: str,
     reference_description: str,
@@ -53,7 +99,8 @@ def evaluate_semantic_understanding(
 ) -> Dict[str, Any]:
     """
     Computes semantic similarity using Sentence-BERT and verifies keyword coverage.
-    method: "v1" (default, no floor) or "b0" (original (cos + 1) / 2 baseline).
+    method: "v1" (default: no similarity floor, whole-word keyword matching) or
+            "b0" (original (cos + 1) / 2 similarity and substring keyword matching).
     """
     if method not in SIMILARITY_METHODS:
         raise ValueError(f"Unknown similarity method: {method!r}")
@@ -77,22 +124,8 @@ def evaluate_semantic_understanding(
     similarity_score = SIMILARITY_METHODS[method](cosine_sim)
 
     # 2. Keyword Coverage
-    mentioned_keywords = []
-    missing_keywords = []
-    
-    clean_transcript = user_transcript.lower()
-    
-    for keyword in keywords:
-        # Check if keyword is in the transcript as a substring
-        # We can make this slightly smarter by checking boundaries
-        pattern = r'\b' + re.escape(keyword.lower()) + r'\b'
-        
-        # Simple fallback to substring check if word boundaries are complex (e.g. phrases)
-        if re.search(pattern, clean_transcript) or keyword.lower() in clean_transcript:
-            mentioned_keywords.append(keyword)
-        else:
-            missing_keywords.append(keyword)
-            
+    mentioned_keywords, missing_keywords = match_keywords(user_transcript, keywords, method)
+
     total_keywords = len(keywords)
     keyword_coverage = (len(mentioned_keywords) / total_keywords * 100.0) if total_keywords > 0 else 100.0
 
