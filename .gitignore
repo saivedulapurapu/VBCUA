@@ -138,3 +138,6 @@ uploads/*
 !VBCUA_Documents/**/*.pdf
 test_report.pdf
 
+
+# Research data (participant audio, transcripts, ratings) — never commit unless consented and anonymised
+research/data/
