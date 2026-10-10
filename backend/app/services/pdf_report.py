@@ -10,6 +10,24 @@ from reportlab.lib.units import inch
 from xml.sax.saxutils import escape
 from backend.app.services.audio_analysis import recording_warning
 
+FLUENCY_NOTE = "Fluency (provisional): based on pause ratio only; calibration pending."
+
+
+def _fmt(value, suffix="", digits=1):
+    return "n/a" if value is None else f"{value:.{digits}f}{suffix}"
+
+
+def delivery_rows(evaluation):
+    """(label, value) rows for the raw delivery measures; older attempts show n/a."""
+    count = getattr(evaluation, "long_pause_count", None)
+    return [
+        ("Speaking rate", _fmt(getattr(evaluation, "speaking_rate_wpm", None), " words/min", 0)),
+        ("Long pauses (1 s or more)", "n/a" if count is None else str(count)),
+        ("Long pauses per minute", _fmt(getattr(evaluation, "long_pauses_per_min", None), "", 1)),
+        ("Longest pause", _fmt(getattr(evaluation, "longest_pause_s", None), " s", 1)),
+    ]
+
+
 FILLER_NOTE = "Filler counts are experimental — speech-to-text usually removes 'um/uh'. Not used in scoring."
 
 def generate_pdf_report(evaluation: Any, concept_title: str, output_path: str) -> str:
@@ -125,7 +143,7 @@ def generate_pdf_report(evaluation: Any, concept_title: str, output_path: str) -
         [
             Paragraph("Overall Score", card_label_style),
             Paragraph("Semantic Similarity", card_label_style),
-            Paragraph("Speech Fluency", card_label_style)
+            Paragraph("Fluency (provisional)", card_label_style)
         ],
         [
             Paragraph(f"{evaluation.final_score:.1f}%", card_val_style),
@@ -178,6 +196,22 @@ def generate_pdf_report(evaluation: Any, concept_title: str, output_path: str) -
     story.append(metrics_table)
     story.append(Spacer(1, 0.05 * inch))
     story.append(Paragraph(FILLER_NOTE, ParagraphStyle('Note', parent=body_style, fontSize=8, textColor=colors.HexColor('#64748b'))))
+    story.append(Paragraph(FLUENCY_NOTE, ParagraphStyle('Note2', parent=body_style, fontSize=8, textColor=colors.HexColor('#64748b'))))
+
+    # Delivery measures: raw values stored for later analysis, not part of any score
+    story.append(Spacer(1, 0.15 * inch))
+    story.append(Paragraph("Delivery measures (not scored)", section_heading))
+    delivery_table = Table([[Paragraph(f"<b>{h}</b>", body_style) for h in ("Measure", "Value")]] + [
+        [Paragraph(label, body_style), Paragraph(value, body_style)] for label, value in delivery_rows(evaluation)
+    ], colWidths=[3.2 * inch, 3.2 * inch])
+    delivery_table.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('LINEBELOW', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f8fafc')),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+        ('TOPPADDING', (0,0), (-1,-1), 5),
+    ]))
+    story.append(delivery_table)
 
     # Microphone check (from raw RMS; not part of any score)
     warning = recording_warning(evaluation.rms_energy)

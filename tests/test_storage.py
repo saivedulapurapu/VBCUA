@@ -69,6 +69,7 @@ def client(session_factory, monkeypatch, tmp_path):
     monkeypatch.setattr(main, "analyze_audio_features", lambda path, transcript: {
         "duration": 30.0, "rms_energy": 0.05, "pause_ratio": 0.5, "pause_ratio_v1": 0.4,
         "filler_words_count": 1, "filler_words_ratio": 2.0, "filler_words_list": ["um: 1"],
+        "speaking_rate_wpm": 112.5, "long_pause_count": 2, "long_pauses_per_min": 4.0, "longest_pause_s": 1.8,
     })
     monkeypatch.setattr(semantic, "get_sbert_model", lambda: StubSbert())
     monkeypatch.setattr(llm_client, "is_configured", lambda: LLM["configured"])
@@ -113,6 +114,10 @@ def test_evaluate_stores_every_sub_score(client, session_factory):
         "asr_device": "cpu-fp32",
         "pause_ratio": 0.5,
         "pause_ratio_v1": 0.4,
+        "speaking_rate_wpm": 112.5,
+        "long_pause_count": 2,
+        "long_pauses_per_min": 4.0,
+        "longest_pause_s": 1.8,
     }
     for field, value in expected.items():
         assert getattr(row, field) == value, field

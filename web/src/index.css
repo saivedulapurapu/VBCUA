@@ -447,6 +447,7 @@ textarea.field { min-height: 96px; resize: vertical; }
 .table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
 .table th, .table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--glass-border); vertical-align: top; }
 .table th { color: var(--muted); font-weight: 600; }
+.table-heading { margin: 20px 0 6px; font-size: 0.95rem; }
 .table td:nth-child(2) { font-variant-numeric: tabular-nums; font-weight: 500; }
 
 .empty { text-align: center; padding: 56px 16px; color: var(--muted); }
