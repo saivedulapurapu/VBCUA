@@ -25,11 +25,12 @@ VBCUA is an AI-powered web application designed to evaluate how effectively user
    - The original formulas remain available as baseline `B0` (`method="b0"`) for research comparisons.
    - Every sub-score, the scoring methods, the ASR model and the feedback source (LLM or rule-based) are stored per attempt.
 
-3. **Dashboard**
-   - Three steps: choose a concept, record or upload an explanation, review the results. The selected concept and the open attempt are kept in the URL, so a page reload keeps them.
-   - Live progress while an attempt is analysed; clear error messages with technical details on demand.
-   - Results: overall, understanding and fluency scores with short explanations, and tabs for feedback, keywords, transcript and every stored sub-score.
-   - History table; selecting a row opens that attempt.
+3. **Web app** (React + TypeScript + Vite, served by the backend)
+   - Glassmorphism design in light and dark, following the system setting unless you pick one.
+   - Three steps: choose a concept (searchable, or **Surprise me** for a random one), record in the browser with a live waveform or upload a file, review the results. The selected concept and the open attempt are kept in the URL, so a page reload keeps them.
+   - Scores appear as soon as the analysis finishes; AI feedback follows a few seconds later ("Writing feedback…").
+   - Results: overall, understanding and fluency score rings with short explanations, and tabs for feedback, keywords, transcript and every stored sub-score.
+   - History; selecting an attempt opens it instantly.
    - Downloads assessment reports as **ReportLab PDFs**.
 
 There are no user accounts or login: all attempts are stored in one shared history. Login and registration appear in the June 2026 project documents as planned features; see [Scope and changes since June 2026](VBCUA_Documents/Scope_and_Changes.md).
@@ -55,13 +56,9 @@ VBCUA/
 │   │       ├── semantic.py         # Sentence-BERT similarity & keyword check
 │   │       └── speech_to_text.py   # Whisper & Gemini transcription managers
 │   └── requirements.txt       # Backend dependencies
-├── frontend/
-│   ├── app.py                 # Streamlit frontend dashboard
-│   ├── api.py                 # Backend API calls with user-facing error messages
-│   ├── display.py             # Display helpers (stored scores, HTML escaping)
-│   ├── requirements.txt       # Frontend dependencies
-│   └── styles.css             # Small style additions to the light theme
-├── .streamlit/config.toml     # Streamlit theme (light) and toolbar settings
+├── web/                       # React + TypeScript web app (Vite)
+│   ├── src/                   # Components, hooks, API client, styles and tests
+│   └── package.json           # Web app dependencies and scripts
 ├── tests/                     # pytest suite (models and APIs stubbed)
 ├── research/data/             # Research data (git-ignored)
 ├── uploads/                   # Local store for audio uploads and generated PDFs
@@ -69,7 +66,7 @@ VBCUA/
 ├── .env                       # Local environment configuration file (ignored)
 ├── .env.template              # Template for configuring env variables
 ├── pytest.ini                 # pytest configuration
-├── run.py                     # Orchestration script to run backend and frontend
+├── run.py                     # Builds the web app if needed and starts the server
 └── README.md                  # Project documentation
 ```
 
@@ -79,6 +76,7 @@ VBCUA/
 
 ### Prerequisites
 - **Python 3.10–3.12** (tested with 3.11; PyTorch/Whisper are not tested on 3.13 here)
+- **Node.js 18+** (with npm): builds the web app. `run.py` builds it automatically.
 - **FFmpeg**: Required by Librosa/Whisper. 
   * *Windows*: Install FFmpeg (e.g. `winget install --id Gyan.FFmpeg -e`) and make sure `ffmpeg -version` works in a new terminal.
 
@@ -136,22 +134,23 @@ source .venv/bin/activate
 
 # Install requirements
 pip install -r backend/requirements.txt
-pip install -r frontend/requirements.txt
 ```
 
 ---
 
 ## Running the Application
 
-VBCUA comes with an orchestrator script `run.py` that will verify your `.env` configuration, create the PostgreSQL database if a `postgresql` URL is configured (skipped for SQLite), and start both services in parallel. Missing columns are added to existing databases at backend startup.
+`run.py` checks your `.env`, creates the PostgreSQL database if a `postgresql` URL is configured (skipped for SQLite), builds the web app when its sources have changed (installing npm packages on the first run), and starts the server. Missing columns are added to existing databases at startup.
 
 Run the launcher:
 ```bash
 python run.py
 ```
 
-- **FastAPI Backend**: Runs at `http://127.0.0.1:8000` (API documentation at `/docs`).
-- **Streamlit Frontend**: Opens automatically at `http://localhost:8501`.
+- **App**: `http://127.0.0.1:8000`
+- **API documentation**: `http://127.0.0.1:8000/docs`
+
+To work on the web app with hot reload, run the backend (`python run.py`) and, in a second terminal, `cd web && npm run dev` (opens `http://localhost:5173`; API calls are proxied to the backend).
 
 ---
 
@@ -159,7 +158,7 @@ python run.py
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/` | Health check |
+| GET | `/api/health` | Health check |
 | POST | `/api/concepts` | Create a concept |
 | GET | `/api/concepts` | List concepts |
 | GET | `/api/concepts/{concept_id}` | Get one concept |
@@ -177,7 +176,8 @@ Interactive documentation is served at `/docs` while the backend is running.
 
 ```bash
 pip install pytest
-python -m pytest
+python -m pytest          # backend
+cd web && npm test        # web app (Vitest + Testing Library)
 ```
 
 The tests stub Whisper, Sentence-BERT and Gemini, so they need no model downloads, API key or network access.
@@ -186,7 +186,7 @@ The tests stub Whisper, Sentence-BERT and Gemini, so they need no model download
 
 ## Pipeline & Tech Stack
 
-- **Frameworks**: FastAPI (Backend) & Streamlit (Frontend)
+- **Frameworks**: FastAPI (backend) & React + TypeScript + Vite (web app)
 - **Database**: SQLite by default; PostgreSQL optional (`postgresql+psycopg2://` URL) via SQLAlchemy ORM
 - **Speech processing**: OpenAI Whisper (optional Google Gemini fallback)
 - **AI feedback**: Google Gemini via the `google-genai` SDK, with a rule-based fallback

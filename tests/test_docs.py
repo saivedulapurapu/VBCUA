@@ -19,7 +19,7 @@ def app_routes():
     return {
         (method, route.path)
         for route in app.routes
-        if isinstance(route, APIRoute)
+        if isinstance(route, APIRoute) and route.include_in_schema
         for method in route.methods
     }
 

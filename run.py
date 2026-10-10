@@ -81,69 +81,98 @@ def setup_db():
         logger.warning(f"Could not verify/create PostgreSQL database automatically: {e}.")
         logger.warning("The application will fallback to SQLite if PostgreSQL connection fails at runtime.")
 
+WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
+WEB_SOURCES = ("src", "public", "index.html", "package.json", "vite.config.ts")
+
+
+def newest_mtime(paths):
+    """Latest modification time of any file under the given paths (0 if none exist)."""
+    newest = 0.0
+    for path in paths:
+        if os.path.isfile(path):
+            newest = max(newest, os.path.getmtime(path))
+        for root, _dirs, files in os.walk(path):
+            for name in files:
+                newest = max(newest, os.path.getmtime(os.path.join(root, name)))
+    return newest
+
+
+def web_needs_build(web_dir=None):
+    """True if web/dist is missing or older than any frontend source file."""
+    web_dir = web_dir or WEB_DIR
+    index = os.path.join(web_dir, "dist", "index.html")
+    if not os.path.exists(index):
+        return True
+    return newest_mtime(os.path.join(web_dir, p) for p in WEB_SOURCES) > os.path.getmtime(index)
+
+
+def build_web():
+    """
+    Builds the React app into web/dist when needed (installs packages on first run).
+    Returns False if it cannot be built and no previous build exists.
+    """
+    if not web_needs_build():
+        logger.info("Web app is up to date.")
+        return True
+    npm = shutil.which("npm")
+    has_build = os.path.exists(os.path.join(WEB_DIR, "dist", "index.html"))
+    if npm is None:
+        if has_build:
+            logger.warning("Node.js/npm not found; serving the existing (possibly outdated) web build.")
+            return True
+        logger.error("Node.js 18+ is required to build the web app (https://nodejs.org). Then run: python run.py")
+        return False
+    try:
+        if not os.path.isdir(os.path.join(WEB_DIR, "node_modules")):
+            logger.info("Installing web app packages (first run)...")
+            subprocess.run([npm, "ci"], cwd=WEB_DIR, check=True)
+        logger.info("Building the web app...")
+        subprocess.run([npm, "run", "build"], cwd=WEB_DIR, check=True)
+        return True
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Web app build failed: {e}")
+        return has_build
+
+
 def start_services():
     """
-    Launches FastAPI (uvicorn) and Streamlit dashboard under the virtual environment.
+    Builds the web app if needed and starts the FastAPI backend, which also serves the web app.
     """
+    if not build_web():
+        return
+
     venv_python = os.path.join(".venv", "Scripts", "python.exe")
-    venv_streamlit = os.path.join(".venv", "Scripts", "streamlit.exe")
-    
     if not os.path.exists(venv_python):
-        logger.warning("Virtual environment not found. Running with system python/streamlit.")
-        venv_python = "python"
-        venv_streamlit = "streamlit"
-        
-    logger.info("Starting FastAPI backend...")
-    
-    # Start FastAPI
+        venv_python = os.path.join(".venv", "bin", "python")
+    if not os.path.exists(venv_python):
+        logger.warning("Virtual environment not found. Running with system python.")
+        venv_python = sys.executable
+
+    logger.info("Starting VBCUA...")
     backend_proc = subprocess.Popen(
         [venv_python, "-m", "uvicorn", "backend.app.main:app", "--host", "127.0.0.1", "--port", "8000"]
     )
-    
-    # Allow 2 seconds to bind port
     time.sleep(2)
-    
     if backend_proc.poll() is not None:
-        logger.error("FastAPI backend failed to start. Please check the terminal logs above.")
+        logger.error("The backend failed to start. Please check the terminal logs above.")
         return
-        
-    logger.info("FastAPI backend successfully launched at http://127.0.0.1:8000")
-    logger.info("Starting Streamlit frontend dashboard...")
-    
-    # Start Streamlit
-    # --server.port 8501 is default, but explicitly setting it avoids conflicts
-    frontend_proc = subprocess.Popen(
-        [venv_streamlit, "run", "frontend/app.py", "--server.port", "8501"]
-    )
-    
-    logger.info("Streamlit dashboard successfully launched at http://localhost:8501")
-    logger.info("Application is running. Press Ctrl+C to terminate both servers.")
-    
+
+    logger.info("VBCUA is running at http://127.0.0.1:8000  (API docs: http://127.0.0.1:8000/docs)")
+    logger.info("Press Ctrl+C to stop.")
     try:
-        while True:
-            # Monitor processes
-            if backend_proc.poll() is not None:
-                logger.error("FastAPI backend process crashed.")
-                break
-            if frontend_proc.poll() is not None:
-                logger.error("Streamlit frontend process crashed.")
-                break
+        while backend_proc.poll() is None:
             time.sleep(1)
+        logger.error("The backend process stopped unexpectedly.")
     except KeyboardInterrupt:
-        logger.info("Termination signal received. Stopping services...")
+        logger.info("Stopping...")
     finally:
-        # Graceful shutdown
         backend_proc.terminate()
-        frontend_proc.terminate()
-        
         try:
             backend_proc.wait(timeout=5)
-            frontend_proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             backend_proc.kill()
-            frontend_proc.kill()
-            
-        logger.info("Services stopped. Exiting.")
+        logger.info("Stopped.")
+
 
 if __name__ == "__main__":
     check_env()
