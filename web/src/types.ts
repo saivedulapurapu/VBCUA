@@ -3,6 +3,8 @@ export interface Concept {
   title: string
   description: string
   keywords: string[]
+  /** "library" (curated), "custom" (added by a user) or "ai-generated"; null for older rows */
+  source?: 'library' | 'custom' | 'ai-generated' | null
   created_at?: string
 }
 
@@ -32,6 +34,11 @@ export interface Evaluation {
   pause_ratio_v1?: number | null
   rms_energy: number
   speech_duration: number
+  /** Delivery measures: stored for later analysis, not scored */
+  speaking_rate_wpm?: number | null
+  long_pause_count?: number | null
+  long_pauses_per_min?: number | null
+  longest_pause_s?: number | null
   final_score: number
   understanding_grade: string
   feedback: string

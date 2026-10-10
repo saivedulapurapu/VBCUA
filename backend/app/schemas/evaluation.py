@@ -32,6 +32,10 @@ class EvaluationResponse(BaseModel):
     pause_ratio_v1: Optional[float] = None
     rms_energy: float
     speech_duration: float
+    speaking_rate_wpm: Optional[float] = None
+    long_pause_count: Optional[int] = None
+    long_pauses_per_min: Optional[float] = None
+    longest_pause_s: Optional[float] = None
     final_score: float
     understanding_grade: str
     feedback: str

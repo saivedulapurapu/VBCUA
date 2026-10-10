@@ -15,7 +15,8 @@ describe('Results', () => {
     expect(screen.getByText('Moderate Understanding')).toHaveClass('badge-moderate')
     expect(screen.getByRole('img', { name: 'Overall: 76.9 out of 100' })).toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'Understanding: 67.0 out of 100' })).toBeInTheDocument()
-    expect(screen.getByRole('img', { name: 'Fluency: 100.0 out of 100' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Fluency (provisional): 100.0 out of 100' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Based on pause ratio only; calibration pending.')).toBeInTheDocument()
     expect(screen.getByText('Pauses 26% of speaking time')).toBeInTheDocument()
   })
 
@@ -30,7 +31,7 @@ describe('Results', () => {
     expect(screen.getByRole('tab', { name: 'Transcript' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByText('We rent servers.')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('tab', { name: 'Details' }))
-    const table = screen.getByRole('table')
+    const table = screen.getAllByRole('table')[0]
     expect(within(table).getByText('Cosine similarity')).toBeInTheDocument()
   })
 
@@ -98,5 +99,25 @@ describe('Practise again', () => {
     expect(onPractise).toHaveBeenCalledOnce()
     rerender(<Results evaluation={attempt()} feedbackError={null} onRetryFeedback={() => {}} canPractise={false} onPractise={onPractise} />)
     expect(screen.queryByRole('button', { name: /practise this concept again/i })).toBeNull()
+  })
+})
+
+
+describe('Delivery measures', () => {
+  it('are listed in Details as not scored', async () => {
+    renderResults({ speaking_rate_wpm: 97.4, long_pause_count: 3, long_pauses_per_min: 2.95, longest_pause_s: 1.52 })
+    await userEvent.click(screen.getByRole('tab', { name: 'Details' }))
+    const table = screen.getByRole('table', { name: 'Delivery measures (not scored)' })
+    expect(within(table).getByText('97 words/min')).toBeInTheDocument()
+    expect(within(table).getByText('3')).toBeInTheDocument()
+    expect(within(table).getByText('3.0')).toBeInTheDocument()
+    expect(within(table).getByText('1.5 s')).toBeInTheDocument()
+  })
+
+  it('show n/a for attempts without them', async () => {
+    renderResults({ speaking_rate_wpm: null, long_pause_count: null, long_pauses_per_min: null, longest_pause_s: null })
+    await userEvent.click(screen.getByRole('tab', { name: 'Details' }))
+    const table = screen.getByRole('table', { name: 'Delivery measures (not scored)' })
+    expect(within(table).getAllByText('n/a')).toHaveLength(4)
   })
 })
