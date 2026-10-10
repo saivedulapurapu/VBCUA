@@ -195,8 +195,7 @@ def evaluate_audio(
         # Step D: Fluency Analysis
         fluency_metrics = compute_fluency_score(
             filler_words_ratio=audio_metrics["filler_words_ratio"],
-            pause_ratio=audio_metrics["pause_ratio"],
-            rms_energy=audio_metrics["rms_energy"]
+            pause_ratio=audio_metrics["pause_ratio"]
         )
         logger.info(f"Fluency score calculated: {fluency_metrics['fluency_score']}/100")
 

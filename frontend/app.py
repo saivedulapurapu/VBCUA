@@ -255,6 +255,10 @@ with col_right:
                     <div style='font-size:0.8rem; color:#00ff66;'>P: {eval_res['pause_ratio']*100:.0f}% | F: {eval_res['filler_words_count']}</div>
                 </div>
                 """)
+            
+            # Microphone check (from raw RMS; not part of any score)
+            if eval_res.get("recording_warning"):
+                st.warning(eval_res["recording_warning"], icon="🎙️")
                 
             st.markdown("---")
             

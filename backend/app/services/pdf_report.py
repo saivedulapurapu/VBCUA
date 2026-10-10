@@ -6,6 +6,7 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
+from backend.app.services.audio_analysis import recording_warning
 
 def generate_pdf_report(evaluation: Any, concept_title: str, output_path: str) -> str:
     """
@@ -160,7 +161,6 @@ def generate_pdf_report(evaluation: Any, concept_title: str, output_path: str) -
         [Paragraph("Filler Word Count", body_style), Paragraph(str(evaluation.filler_words_count), body_style), Paragraph("0 - 2 words", body_style)],
         [Paragraph("Filler Words Ratio", body_style), Paragraph(f"{evaluation.filler_words_ratio:.1f} per 100 words", body_style), Paragraph("< 2.0 ratio", body_style)],
         [Paragraph("Pause Ratio (Silence)", body_style), Paragraph(f"{evaluation.pause_ratio*100:.1f}%", body_style), Paragraph("10% - 25%", body_style)],
-        [Paragraph("Speaking Intensity (RMS)", body_style), Paragraph(f"{evaluation.rms_energy:.4f}", body_style), Paragraph("> 0.005", body_style)],
     ]
     metrics_table = Table(metrics_data, colWidths=[2.2 * inch, 2.1 * inch, 2.1 * inch])
     metrics_table.setStyle(TableStyle([
@@ -171,6 +171,12 @@ def generate_pdf_report(evaluation: Any, concept_title: str, output_path: str) -
         ('TOPPADDING', (0,0), (-1,-1), 5),
     ]))
     story.append(metrics_table)
+
+    # Microphone check (from raw RMS; not part of any score)
+    warning = recording_warning(evaluation.rms_energy)
+    if warning:
+        story.append(Spacer(1, 0.1 * inch))
+        story.append(Paragraph(f"<b>Note:</b> {warning}", ParagraphStyle('Warning', parent=body_style, textColor=colors.HexColor('#b45309'))))
     story.append(Spacer(1, 0.25 * inch))
 
     # Educational Assessment & AI Feedback

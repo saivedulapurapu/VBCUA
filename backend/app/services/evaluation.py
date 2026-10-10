@@ -1,13 +1,28 @@
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from backend.app.services import llm_client
 
 logger = logging.getLogger(__name__)
 
-def compute_fluency_score(filler_words_ratio: float, pause_ratio: float, rms_energy: float) -> Dict[str, Any]:
+FLUENCY_METHODS = ("v1", "b0")
+
+def compute_fluency_score(
+    filler_words_ratio: float,
+    pause_ratio: float,
+    rms_energy: Optional[float] = None,
+    method: str = "v1"
+) -> Dict[str, Any]:
     """
     Computes a speech fluency score out of 100 and returns observations.
+    method: "v1" (default) scores fillers and pauses only.
+            "b0" is the original formula, which also deducts for low RMS volume
+            (measures the microphone, not the speaker). Kept only for comparison.
     """
+    if method not in FLUENCY_METHODS:
+        raise ValueError(f"Unknown fluency method: {method!r}")
+    if method == "b0" and rms_energy is None:
+        raise ValueError("method='b0' requires rms_energy")
+
     score = 100.0
     deductions = {}
     observations = []
@@ -38,23 +53,25 @@ def compute_fluency_score(filler_words_ratio: float, pause_ratio: float, rms_ene
     else:
         observations.append("Natural pacing and breathing intervals.")
 
-    # 3. RMS Energy (volume/confidence)
+    # 3. B0 only: RMS Energy (volume/confidence)
     # Average speech RMS is typically > 0.01. Below 0.005 is very soft/muffled.
-    if rms_energy < 0.005:
-        rms_deduction = 15.0
-        score -= rms_deduction
-        deductions["speaking_volume"] = rms_deduction
-        observations.append("Low speaking volume detected. Speak closer to the microphone or with more confidence.")
-    elif rms_energy > 0.15:
-        observations.append("Strong, loud speaking volume. Good delivery energy.")
-    else:
-        observations.append("Consistent, clear speaking volume.")
+    if method == "b0":
+        if rms_energy < 0.005:
+            rms_deduction = 15.0
+            score -= rms_deduction
+            deductions["speaking_volume"] = rms_deduction
+            observations.append("Low speaking volume detected. Speak closer to the microphone or with more confidence.")
+        elif rms_energy > 0.15:
+            observations.append("Strong, loud speaking volume. Good delivery energy.")
+        else:
+            observations.append("Consistent, clear speaking volume.")
 
     final_score = max(10.0, min(100.0, score))
     return {
         "fluency_score": round(final_score, 1),
         "deductions": deductions,
-        "observations": observations
+        "observations": observations,
+        "scoring_method": method
     }
 
 def generate_rule_based_feedback(
@@ -97,7 +114,6 @@ def generate_rule_based_feedback(
 #### 3. Structured Recommendations
 1. {"Review the missed keywords to make your explanation comprehensive." if semantic_result["missing_keywords"] else "Great job covering all key terms! Keep it up."}
 2. {"Practice breathing and pausing naturally if you feel rushed or hesitant." if "pause_ratio" in fluency_result["deductions"] else "Maintain your current natural pacing."}
-3. {"Try to speak in a quiet room or adjust your microphone settings to improve voice clarity." if "speaking_volume" in fluency_result["deductions"] else "Continue speaking with clear, confident volume levels."}
 """
     return feedback_md
 
@@ -137,7 +153,7 @@ def generate_ai_feedback(
     
     Please write a structured evaluation report. Use markdown formatting. Include the following sections:
     1. **Conceptual Accuracy & Comprehension**: Discuss what they explained correctly, what they missed, and any misconceptions they showed.
-    2. **Speech Delivery & Fluency**: Analyze their speaking style, filler word usage, and volume/pacing confidence based on the observations.
+    2. **Speech Delivery & Fluency**: Analyze their speaking style, filler word usage, and pacing based on the observations.
     3. **Key Suggestions for Improvement**: Provide 2-3 specific, actionable steps to help them explain this topic better next time.
     
     Keep the tone professional, encouraging, and constructive. Return ONLY the markdown formatted response.

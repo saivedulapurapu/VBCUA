@@ -1,7 +1,8 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 from datetime import datetime
 from typing import Optional
 from backend.app.schemas.concept import ConceptResponse
+from backend.app.services.audio_analysis import recording_warning as _recording_warning
 
 class EvaluationBase(BaseModel):
     concept_id: int
@@ -27,6 +28,12 @@ class EvaluationResponse(BaseModel):
     audio_path: Optional[str] = None
     created_at: datetime
     concept: Optional[ConceptResponse] = None
+
+    @computed_field
+    @property
+    def recording_warning(self) -> Optional[str]:
+        """Microphone warning derived from the raw rms_energy (not a score)."""
+        return _recording_warning(self.rms_energy)
 
     class Config:
         from_attributes = True

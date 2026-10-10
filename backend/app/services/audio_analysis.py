@@ -3,7 +3,19 @@ import re
 import numpy as np
 import librosa
 import soundfile as sf
-from typing import Dict, Any
+from typing import Dict, Any, Optional
+
+# Mean RMS over the whole clip below this suggests a too-quiet recording.
+# Uncalibrated; used only for a microphone warning, never for scoring.
+LOW_RMS_THRESHOLD = 0.005
+
+def recording_warning(rms_energy: Optional[float]) -> Optional[str]:
+    """
+    Returns a microphone warning for a too-quiet recording, else None.
+    """
+    if rms_energy is not None and rms_energy < LOW_RMS_THRESHOLD:
+        return "Recording is very quiet — check your microphone."
+    return None
 
 def analyze_audio_features(audio_path: str, transcript: str) -> Dict[str, Any]:
     """
