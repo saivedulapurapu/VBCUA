@@ -1,44 +1,62 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Mic, Plus, Sparkles } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { History as HistoryIcon, Mic, Plus, Sparkles } from 'lucide-react'
 import { api } from './api'
 import type { Concept, Evaluation } from './types'
 import { initialConceptId } from './lib/display'
 import { useTheme } from './hooks/useTheme'
 import { useUrlParam } from './hooks/useUrlParam'
+import { useElapsed } from './hooks/useElapsed'
+import { useFeedback } from './hooks/useFeedback'
 import { ThemeToggle } from './components/ThemeToggle'
 import { ConceptPicker } from './components/ConceptPicker'
 import { AddConceptDrawer } from './components/AddConceptDrawer'
 import { ErrorNotice } from './components/ErrorNotice'
 import { Recorder, type AudioInput } from './components/Recorder'
 import { AnalyseProgress } from './components/AnalyseProgress'
-import { useElapsed } from './hooks/useElapsed'
+import { Results } from './components/Results'
+import { History } from './components/History'
 
 export default function App() {
   const { theme, cycle } = useTheme()
   const [conceptParam, setConceptParam] = useUrlParam('concept')
+  const [attemptParam, setAttemptParam] = useUrlParam('attempt')
   const [concepts, setConcepts] = useState<Concept[]>([])
+  const [history, setHistory] = useState<Evaluation[]>([])
   const [loadError, setLoadError] = useState<unknown>(null)
   const [addingConcept, setAddingConcept] = useState(false)
-  const [, setAttemptParam] = useUrlParam('attempt')
   const [audio, setAudio] = useState<AudioInput | null>(null)
   const [analysing, setAnalysing] = useState(false)
   const [analyseError, setAnalyseError] = useState<unknown>(null)
   const [current, setCurrent] = useState<Evaluation | null>(null)
   const elapsed = useElapsed(analysing)
+  const resultsRef = useRef<HTMLElement>(null)
   const onAudioChange = useCallback((a: AudioInput | null) => setAudio(a), [])
 
+  // Initial data; reopen the attempt from the URL so a reload keeps it
   useEffect(() => {
     api.getConcepts().then(setConcepts).catch(setLoadError)
-  }, [])
+    api.getEvaluations().then(setHistory).catch(setLoadError)
+    const id = attemptParam && /^\d+$/.test(attemptParam) ? Number(attemptParam) : null
+    if (id !== null) {
+      api.getEvaluation(id).then(setCurrent).catch(() => setAttemptParam(null))
+    }
+  }, []) // run once on load
 
   const selectedId = initialConceptId(concepts, conceptParam)
-  const selectConcept = (id: number) => setConceptParam(String(id))
   const selectedConcept = concepts.find((c) => c.id === selectedId) ?? null
+  const selectConcept = (id: number) => setConceptParam(String(id))
 
-  const showEvaluation = (e: Evaluation) => {
-    setCurrent(e)
-    setAttemptParam(String(e.id))
-  }
+  /** Shows an attempt and keeps the history list in sync with it. */
+  const showEvaluation = useCallback(
+    (e: Evaluation) => {
+      setCurrent(e)
+      setAttemptParam(String(e.id))
+      setHistory((list) => (list.some((x) => x.id === e.id) ? list.map((x) => (x.id === e.id ? e : x)) : [e, ...list]))
+    },
+    [setAttemptParam],
+  )
+
+  const { error: feedbackError } = useFeedback(current, showEvaluation)
 
   const analyse = async () => {
     if (!audio || !selectedConcept) return
@@ -46,12 +64,15 @@ export default function App() {
     setAnalyseError(null)
     try {
       showEvaluation(await api.evaluate(selectedConcept.id, audio.blob, audio.filename))
+      if (window.matchMedia?.('(max-width: 920px)').matches) resultsRef.current?.scrollIntoView({ behavior: 'smooth' })
     } catch (e) {
       setAnalyseError(e)
     } finally {
       setAnalysing(false)
     }
   }
+
+  const retryFeedback = () => current && setCurrent({ ...current, feedback_status: 'pending' })
 
   return (
     <>
@@ -111,12 +132,9 @@ export default function App() {
             </div>
           </section>
 
-          <section className="panel glass" aria-label="Results">
+          <section className="panel glass" aria-label="Results" ref={resultsRef}>
             {current ? (
-              <div>
-                <h2 className="step-head"><span className="step-num">3</span> Results</h2>
-                <p>Overall {current.final_score.toFixed(1)} · {current.understanding_grade}</p>
-              </div>
+              <Results evaluation={current} feedbackError={feedbackError} onRetryFeedback={retryFeedback} />
             ) : (
               <div className="empty">
                 <Mic size={40} aria-hidden />
@@ -126,6 +144,13 @@ export default function App() {
             )}
           </section>
         </main>
+
+        <section className="panel glass section" aria-labelledby="history-title">
+          <h2 className="step-head" id="history-title">
+            <HistoryIcon size={18} aria-hidden /> History
+          </h2>
+          <History items={history} currentId={current?.id ?? null} onOpen={showEvaluation} />
+        </section>
       </div>
 
       {addingConcept && (
