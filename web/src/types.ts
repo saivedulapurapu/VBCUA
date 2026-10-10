@@ -50,6 +50,11 @@ export interface Evaluation {
   pause_ratio_v1?: number | null
   rms_energy: number
   speech_duration: number
+  /** Delivery measures: stored for later analysis, not scored */
+  speaking_rate_wpm?: number | null
+  long_pause_count?: number | null
+  long_pauses_per_min?: number | null
+  longest_pause_s?: number | null
   final_score: number
   understanding_grade: string
   feedback: string

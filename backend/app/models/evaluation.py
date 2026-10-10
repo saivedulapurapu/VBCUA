@@ -29,6 +29,11 @@ class Evaluation(Base):
     pause_ratio_v1 = Column(Float, nullable=True)    # v1: silent share between first and last speech
     rms_energy = Column(Float, default=0.0)          # speaking volume/intensity metric
     speech_duration = Column(Float, default=0.0)     # duration in seconds
+    # Delivery measures (stored for later analysis, not scored)
+    speaking_rate_wpm = Column(Float, nullable=True)    # words per minute between first and last speech
+    long_pause_count = Column(Integer, nullable=True)   # silences >= 1 s between speech
+    long_pauses_per_min = Column(Float, nullable=True)
+    longest_pause_s = Column(Float, nullable=True)
     
     fluency_score = Column(Float, nullable=True)
     fluency_method = Column(String(10), nullable=True)   # "v1" / "b0"

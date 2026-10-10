@@ -4,7 +4,7 @@ import { Download, Info, MicOff, RefreshCw, Repeat } from 'lucide-react'
 import { api } from '../api'
 import type { Evaluation } from '../types'
 import {
-  conceptTitle, demoteHeadings, detailsRows, feedbackInProgress, feedbackNotice, formatDate,
+  conceptTitle, deliveryRows, demoteHeadings, detailsRows, feedbackInProgress, feedbackNotice, formatDate,
   gradeTone, keywordBadges, scoreCards,
 } from '../lib/display'
 import { ScoreRing } from './ScoreRing'
@@ -140,14 +140,24 @@ export function Results({ evaluation: e, feedbackError, onRetryFeedback, canPrac
         )}
 
         {tab === 'Details' && (
-          <table className="table">
-            <thead><tr><th>Measure</th><th>Value</th><th>Note</th></tr></thead>
-            <tbody>
-              {detailsRows(e).map((row) => (
-                <tr key={row.measure}><td>{row.measure}</td><td>{row.value}</td><td className="muted">{row.note}</td></tr>
-              ))}
-            </tbody>
-          </table>
+          <>
+            <table className="table">
+              <thead><tr><th>Measure</th><th>Value</th><th>Note</th></tr></thead>
+              <tbody>
+                {detailsRows(e).map((row) => (
+                  <tr key={row.measure}><td>{row.measure}</td><td>{row.value}</td><td className="muted">{row.note}</td></tr>
+                ))}
+              </tbody>
+            </table>
+            <h4 className="table-heading">Delivery measures (not scored)</h4>
+            <table className="table" aria-label="Delivery measures (not scored)">
+              <tbody>
+                {deliveryRows(e).map((row) => (
+                  <tr key={row.measure}><td>{row.measure}</td><td>{row.value}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </>
         )}
       </div>
 

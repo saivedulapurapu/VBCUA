@@ -72,6 +72,10 @@ ADDED_EVALUATION_COLUMNS = {
     "feedback_started_at": "TIMESTAMP",
     "feedback_seconds": "FLOAT",
     "asr_device": "VARCHAR(20)",
+    "speaking_rate_wpm": "FLOAT",
+    "long_pause_count": "INTEGER",
+    "long_pauses_per_min": "FLOAT",
+    "longest_pause_s": "FLOAT",
 }
 
 ADDED_CONCEPT_COLUMNS = {
@@ -326,6 +330,10 @@ def evaluate_audio(
             pause_ratio_v1=audio_metrics["pause_ratio_v1"],
             rms_energy=audio_metrics["rms_energy"],
             speech_duration=audio_metrics["duration"],
+            speaking_rate_wpm=audio_metrics.get("speaking_rate_wpm"),
+            long_pause_count=audio_metrics.get("long_pause_count"),
+            long_pauses_per_min=audio_metrics.get("long_pauses_per_min"),
+            longest_pause_s=audio_metrics.get("longest_pause_s"),
             final_score=evaluation_result["final_score"],
             understanding_grade=evaluation_result["understanding_grade"],
             feedback=evaluation_result["feedback"],

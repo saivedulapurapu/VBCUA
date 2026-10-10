@@ -18,7 +18,8 @@ VBCUA is an AI-powered web application designed to evaluate how effectively user
    - Assigns qualitative grades: *Strong Understanding* (≥ 80), *Moderate Understanding* (≥ 50), or *Poor Understanding*. The cut-offs are not yet calibrated against human ratings.
 
 2. **Speech Fluency & Delivery Metrics**
-   - Fluency score is based on the pause ratio, measured between the first and last detected speech using **Librosa**.
+   - Fluency score (provisional) is based on the pause ratio only, measured between the first and last detected speech using **Librosa**; calibration is pending.
+   - Delivery measures are stored per attempt but **not scored**: speaking rate (words per minute), number of pauses of 1 s or more, long pauses per minute and the longest pause. `research/backfill_delivery_measures.py` fills them in for older attempts from their saved audio.
    - Filler words (`um`, `uh`, `like`, `ah`, `you know`, `basically`, `actually`) are counted and stored but are **experimental and not scored**: speech-to-text usually removes "um/uh".
    - RMS energy is stored as a raw value and used only to warn about a very quiet recording ("check your microphone"); it does not affect any score.
    - Overall score = 70% understanding + 30% fluency.

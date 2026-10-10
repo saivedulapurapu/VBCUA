@@ -80,3 +80,19 @@ def test_pdf_feedback_headings_bullets_and_rules(tmp_path):
     assert b"# Assessment" not in text
     assert b"---" not in text
     assert b"star bullet" in text and b"* star" not in text
+
+
+
+def test_pdf_delivery_measures_not_scored(tmp_path):
+    text = render(tmp_path, make_evaluation(speaking_rate_wpm=97.4, long_pause_count=3, long_pauses_per_min=2.95, longest_pause_s=1.52))
+    assert b"Delivery measures (not scored)" in text
+    assert b"97 words/min" in text
+    assert b"1.5 s" in text
+    assert b"Fluency (provisional)" in text
+    assert b"based on pause ratio only; calibration pending" in text
+
+
+def test_pdf_delivery_measures_old_rows(tmp_path):
+    text = render(tmp_path, make_evaluation())  # no delivery attributes at all
+    assert b"Delivery measures (not scored)" in text
+    assert text.count(b"n/a") >= 4
