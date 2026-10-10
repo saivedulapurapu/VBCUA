@@ -64,7 +64,7 @@ def client(session_factory, monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path))
     monkeypatch.setattr(main, "transcribe_audio", lambda path: {
         "text": "A database is queried with SQL using tables.",
-        "asr_model": "whisper-small", "asr_confidence": -0.25,
+        "asr_model": "whisper-small", "asr_confidence": -0.25, "asr_device": "cpu-fp32",
     })
     monkeypatch.setattr(main, "analyze_audio_features", lambda path, transcript: {
         "duration": 30.0, "rms_energy": 0.05, "pause_ratio": 0.5, "pause_ratio_v1": 0.4,
@@ -110,6 +110,7 @@ def test_evaluate_stores_every_sub_score(client, session_factory):
         "llm_model": None,
         "feedback_status": "pending",
         "asr_model": "whisper-small",
+        "asr_device": "cpu-fp32",
         "pause_ratio": 0.5,
         "pause_ratio_v1": 0.4,
     }

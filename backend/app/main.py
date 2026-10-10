@@ -70,6 +70,7 @@ ADDED_EVALUATION_COLUMNS = {
     "feedback_status": "VARCHAR(20)",
     "feedback_started_at": "TIMESTAMP",
     "feedback_seconds": "FLOAT",
+    "asr_device": "VARCHAR(20)",
 }
 
 def migrate_evaluations_table(session_factory):
@@ -256,6 +257,7 @@ def evaluate_audio(
             transcription=transcription,
             asr_model=asr_result["asr_model"],
             asr_confidence=asr_result["asr_confidence"],
+            asr_device=asr_result.get("asr_device"),
             semantic_score=semantic_metrics["similarity_score"],
             cosine_similarity=semantic_metrics["cosine_similarity"],
             keyword_coverage=semantic_metrics["keyword_coverage"],

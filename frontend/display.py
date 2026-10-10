@@ -179,6 +179,7 @@ def details_rows(eval_res: Dict[str, Any]) -> List[Dict[str, str]]:
         ("Filler words", str(eval_res.get("filler_words_count", "n/a")), "Experimental, not scored"),
         ("Duration", _fmt(eval_res.get("speech_duration"), 1, " s"), ""),
         ("Speech-to-text model", str(eval_res.get("asr_model") or "n/a"), "ASR confidence " + _fmt(eval_res.get("asr_confidence"), 3)),
+        ("Speech-to-text device", str(eval_res.get("asr_device") or "n/a"), "cpu-fp32 or cuda-fp16"),
         ("Feedback source", str(eval_res.get("feedback_source") or "n/a"), str(eval_res.get("llm_model") or "")),
         ("Feedback time", _fmt(eval_res.get("feedback_seconds"), 1, " s"), "Time taken by the AI feedback model"),
         ("Scoring methods", f"semantic {eval_res.get('semantic_method') or 'n/a'}, fluency {eval_res.get('fluency_method') or 'n/a'}", "B0 = original baseline"),

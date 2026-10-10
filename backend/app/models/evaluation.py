@@ -13,6 +13,7 @@ class Evaluation(Base):
     transcription = Column(Text, nullable=False)
     asr_model = Column(String(50), nullable=True)       # e.g. "whisper-small"
     asr_confidence = Column(Float, nullable=True)       # mean Whisper avg_logprob over segments
+    asr_device = Column(String(20), nullable=True)      # e.g. "cpu-fp32" or "cuda-fp16"
     semantic_score = Column(Float, nullable=False)  # Similarity out of 100
     cosine_similarity = Column(Float, nullable=True)     # raw Sentence-BERT cosine
     keyword_coverage = Column(Float, nullable=True)      # % of concept keywords mentioned
