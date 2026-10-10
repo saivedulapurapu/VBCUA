@@ -89,3 +89,14 @@ describe('History', () => {
     expect(screen.getByText(/No attempts yet/)).toBeInTheDocument()
   })
 })
+
+describe('Practise again', () => {
+  it('is offered only when the attempt concept differs from the selection', async () => {
+    const onPractise = vi.fn()
+    const { rerender } = render(<Results evaluation={attempt()} feedbackError={null} onRetryFeedback={() => {}} canPractise onPractise={onPractise} />)
+    await userEvent.click(screen.getByRole('button', { name: /practise this concept again/i }))
+    expect(onPractise).toHaveBeenCalledOnce()
+    rerender(<Results evaluation={attempt()} feedbackError={null} onRetryFeedback={() => {}} canPractise={false} onPractise={onPractise} />)
+    expect(screen.queryByRole('button', { name: /practise this concept again/i })).toBeNull()
+  })
+})

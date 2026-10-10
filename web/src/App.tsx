@@ -30,6 +30,7 @@ export default function App() {
   const [current, setCurrent] = useState<Evaluation | null>(null)
   const elapsed = useElapsed(analysing)
   const resultsRef = useRef<HTMLElement>(null)
+  const recorderRef = useRef<HTMLHeadingElement>(null)
   const onAudioChange = useCallback((a: AudioInput | null) => setAudio(a), [])
 
   // Initial data; reopen the attempt from the URL so a reload keeps it
@@ -92,8 +93,8 @@ export default function App() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" className="btn" onClick={() => setAddingConcept(true)}>
-              <Plus size={16} aria-hidden /> Add concept
+            <button type="button" className="btn" onClick={() => setAddingConcept(true)} aria-label="Add concept">
+              <Plus size={16} aria-hidden /> <span className="btn-label">Add concept</span>
             </button>
             <ThemeToggle theme={theme} onCycle={cycle} />
           </div>
@@ -116,8 +117,8 @@ export default function App() {
             <ConceptPicker concepts={concepts} selectedId={selectedId} onSelect={selectConcept} />
 
             <hr className="divider" />
-            <h2 className="step-head">
-              <span className="step-num">2</span> Record or upload your explanation
+            <h2 className="step-head" ref={recorderRef}>
+              <span className="step-num">2</span> Record or upload
             </h2>
             <Recorder onChange={onAudioChange} disabled={analysing} />
 
@@ -134,7 +135,16 @@ export default function App() {
 
           <section className="panel glass" aria-label="Results" ref={resultsRef}>
             {current ? (
-              <Results evaluation={current} feedbackError={feedbackError} onRetryFeedback={retryFeedback} />
+              <Results
+                evaluation={current}
+                feedbackError={feedbackError}
+                onRetryFeedback={retryFeedback}
+                canPractise={current.concept_id !== selectedId && concepts.some((c) => c.id === current.concept_id)}
+                onPractise={() => {
+                  selectConcept(current.concept_id)
+                  recorderRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                }}
+              />
             ) : (
               <div className="empty">
                 <Mic size={40} aria-hidden />

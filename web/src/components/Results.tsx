@@ -1,6 +1,6 @@
 import { useId, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { Download, Info, MicOff, RefreshCw } from 'lucide-react'
+import { Download, Info, MicOff, RefreshCw, Repeat } from 'lucide-react'
 import { api } from '../api'
 import type { Evaluation } from '../types'
 import {
@@ -17,10 +17,13 @@ interface Props {
   evaluation: Evaluation
   feedbackError: unknown
   onRetryFeedback: () => void
+  /** True when this attempt's concept is not the one currently selected for the next attempt */
+  canPractise?: boolean
+  onPractise?: () => void
 }
 
 /** Step 3: scores, notices and tabs for one attempt. All values come from the stored attempt. */
-export function Results({ evaluation: e, feedbackError, onRetryFeedback }: Props) {
+export function Results({ evaluation: e, feedbackError, onRetryFeedback, canPractise = false, onPractise }: Props) {
   const [tab, setTab] = useState<Tab>('Feedback')
   const tabIds = useId()
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
@@ -152,6 +155,11 @@ export function Results({ evaluation: e, feedbackError, onRetryFeedback }: Props
         <a className="btn" href={api.pdfUrl(e.id)} download>
           <Download size={16} aria-hidden /> Download PDF report
         </a>
+        {canPractise && onPractise && (
+          <button type="button" className="btn" onClick={onPractise}>
+            <Repeat size={16} aria-hidden /> Practise this concept again
+          </button>
+        )}
       </div>
     </div>
   )

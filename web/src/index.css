@@ -89,7 +89,7 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
-html, body { margin: 0; min-height: 100%; }
+html, body { margin: 0; min-height: 100%; overflow-x: hidden; }
 
 body {
   font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -172,6 +172,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   color: transparent;
 }
 
+.grid > * { min-width: 0; }
 .grid {
   display: grid;
   grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
@@ -181,7 +182,6 @@ button, input, textarea, select { font: inherit; color: inherit; }
 @media (max-width: 920px) { .grid { grid-template-columns: 1fr; } }
 
 .panel { padding: 24px; }
-.panel + .panel { margin-top: 24px; }
 .section { margin-top: 28px; }
 
 .step-head { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; font-weight: 600; }
@@ -214,6 +214,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
   font-weight: 500;
   transition: transform 0.15s ease, background-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s;
 }
+a.btn { text-decoration: none; color: inherit; }
 .btn:hover:not(:disabled) { transform: translateY(-1px); background: var(--glass-strong); }
 .btn:active:not(:disabled) { transform: translateY(0); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -242,8 +243,9 @@ button, input, textarea, select { font: inherit; color: inherit; }
 textarea.field { min-height: 96px; resize: vertical; }
 
 .picker { position: relative; }
-.picker-row { display: flex; gap: 10px; }
-.picker-row .field { flex: 1; }
+.picker-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.picker-row > div { min-width: 0; flex: 1 1 240px; }
+.picker-row .field { flex: 1; min-width: 0; }
 .options {
   position: absolute;
   z-index: 20;
@@ -369,7 +371,6 @@ textarea.field { min-height: 96px; resize: vertical; }
 .badge-poor { color: var(--bad); background: var(--bad-bg); }
 
 .scores { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 20px 0 8px; }
-@media (max-width: 560px) { .scores { grid-template-columns: 1fr; } }
 .score {
   display: flex;
   flex-direction: column;
@@ -383,7 +384,7 @@ textarea.field { min-height: 96px; resize: vertical; }
 .score-label { font-weight: 600; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 4px; }
 .score-caption { font-size: 0.78rem; color: var(--muted); }
 .ring { position: relative; width: 96px; height: 96px; }
-.ring svg { transform: rotate(-90deg); }
+.ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
 .ring-value {
   position: absolute;
   inset: 0;
@@ -393,7 +394,8 @@ textarea.field { min-height: 96px; resize: vertical; }
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
-.ring-arc { transition: stroke-dashoffset 0.9s cubic-bezier(0.22, 1, 0.36, 1); }
+.ring-arc { animation: ring-fill 1s cubic-bezier(0.22, 1, 0.36, 1); }
+@keyframes ring-fill { from { stroke-dashoffset: var(--circumference); } }
 
 .notice { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: var(--radius-sm); margin-top: 12px; font-size: 0.9rem; }
 .notice-info { background: var(--ring-track); }
@@ -436,6 +438,22 @@ textarea.field { min-height: 96px; resize: vertical; }
 .empty h3 { color: var(--text); margin: 12px 0 6px; }
 
 .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+
+/* ---------- Small screens ---------- */
+
+@media (max-width: 560px) {
+  .shell { padding: 12px 12px 48px; }
+  .topbar { padding: 10px 12px; margin-bottom: 18px; }
+  .brand-sub { display: none; }
+  .btn-label { display: none; }
+  .panel { padding: 18px; }
+  .scores { gap: 8px; }
+  .score { padding: 12px 6px; }
+  .ring { width: 72px; height: 72px; }
+  .ring-value { font-size: 1.1rem; }
+  .score-caption { display: none; }
+  .tab { padding: 10px 10px; }
+}
 
 /* ---------- History ---------- */
 

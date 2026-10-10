@@ -97,3 +97,14 @@ describe('App', () => {
     expect(document.documentElement.dataset.theme).toBeUndefined()
   })
 })
+
+describe('App practise again', () => {
+  it('switches the picker to the opened attempt concept', async () => {
+    window.history.replaceState(null, '', '/?concept=1&attempt=7')
+    vi.spyOn(api, 'getEvaluation').mockResolvedValue(attempt()) // Cloud Computing (id 2)
+    render(<App />)
+    await userEvent.click(await screen.findByRole('button', { name: /practise this concept again/i }))
+    expect(screen.getByRole('button', { name: 'Analyse explanation of Cloud Computing' })).toBeInTheDocument()
+    expect(window.location.search).toContain('concept=2')
+  })
+})
