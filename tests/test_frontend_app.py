@@ -129,3 +129,38 @@ def test_history_lists_attempts(backend):
     assert len(at.dataframe) == 1
     df = at.dataframe[0].value
     assert list(df["Overall"]) == [82.2, 51.5]  # newest first
+
+
+# --- Theme and layout ---
+
+import tomllib  # noqa: E402
+
+ROOT = FRONTEND.parent
+
+
+def test_streamlit_theme_is_light_and_toolbar_minimal():
+    config = tomllib.loads((ROOT / ".streamlit" / "config.toml").read_text(encoding="utf-8"))
+    assert config["theme"]["base"] == "light"
+    assert config["client"]["toolbarMode"] == "minimal"
+
+
+def test_analyse_button_names_concept_and_waits_for_audio(backend):
+    at = run(query={"concept": "2"})
+    button = at.button[0]
+    assert button.label == "Analyse explanation of Database Management System (DBMS)"
+    assert button.disabled  # no recording yet
+
+
+def test_no_api_key_form_in_ui(backend):
+    at = run()
+    labels = [t.label.lower() for t in at.text_input]
+    assert not any("api key" in label for label in labels)
+
+
+def test_add_concept_form_in_sidebar(backend):
+    at = run()
+    assert [t.label for t in at.sidebar.text_input] == ["Title", "Keywords (comma separated)"]
+
+
+def test_empty_state_before_any_result(backend):
+    assert "No results yet" in all_text(run())

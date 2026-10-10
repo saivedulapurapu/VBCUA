@@ -52,10 +52,7 @@ def esc(value: Any) -> str:
 
 
 def description_html(text: str) -> str:
-    return (
-        "<p style='color: #94a3b8; font-size: 0.92rem; line-height: 1.6; margin-bottom: 20px;'>"
-        f"{esc(text)}</p>"
-    )
+    return f"<p class='concept-description'>{esc(text)}</p>"
 
 
 def keyword_badges_html(badges: List[Tuple[str, str]]) -> str:
@@ -66,11 +63,7 @@ def keyword_badges_html(badges: List[Tuple[str, str]]) -> str:
 
 
 def transcript_html(text: str) -> str:
-    return (
-        "<div style='background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); "
-        "padding: 15px; border-radius: 8px; font-style: italic; color: #a0aec0;'>"
-        f"\"{esc(text)}\"</div>"
-    )
+    return f"<div class='transcript'>{esc(text)}</div>"
 
 
 def grade_color(grade: str) -> str:

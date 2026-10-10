@@ -1,42 +1,35 @@
 import os
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
-import numpy as np
+
 import matplotlib.pyplot as plt
+import numpy as np
 import streamlit as st
-import plotly.graph_objects as go
-from dotenv import load_dotenv
+
 import api
 from api import BackendError
 from display import (
-    FOUND, MISSING, PLAIN, concept_title as get_concept_title, description_html, esc,
+    FOUND, MISSING, PLAIN, concept_title as get_concept_title, description_html,
     feedback_notice, fluency_text, history_rows, initial_concept_id, keyword_badges,
     keyword_badges_html, transcript_html,
 )
 
-# Load local environment variables (for Gemini key check)
-load_dotenv()
-
 st.set_page_config(
-    page_title="VBCUA - Voice-Based Concept Understanding Analyser",
+    page_title="VBCUA · Concept Understanding Analyser",
+    page_icon=":material/record_voice_over:",
     layout="wide",
-    page_icon="🎙️",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed",
 )
 
-# Custom styles injection
 css_path = os.path.join(os.path.dirname(__file__), "styles.css")
 if os.path.exists(css_path):
-    with open(css_path) as f:
+    with open(css_path, encoding="utf-8") as f:
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
-else:
-    st.warning("Custom CSS styling file not found. Rendering using default Streamlit theme.")
 
-# Title Banner
-st.markdown("<div class='neon-title'>VBCUA Assessment Dashboard</div>", unsafe_allow_html=True)
-st.markdown("<div class='neon-subtitle'>AI-Powered Semantic & Speech Fluency Concept Evaluation</div>", unsafe_allow_html=True)
 
-# Helper Functions
+# ---------- Helpers ----------
+
 def show_error(error: BackendError):
     """User-facing message, with the technical detail tucked into an expander."""
     st.error(error.message)
@@ -44,10 +37,16 @@ def show_error(error: BackendError):
         with st.expander("Technical details"):
             st.code(error.detail, language=None)
 
+
 def show_evaluation(result):
     """Display an attempt and remember it in the URL so a page reload keeps it."""
     st.session_state.current_evaluation = result
     st.query_params["attempt"] = str(result["id"])
+
+
+def step_title(number: int, text: str):
+    st.html(f"<p class='step-title'><span class='step-number'>{number}</span>{text}</p>")
+
 
 def run_evaluation_with_progress(concept, audio_bytes, filename):
     """Runs the (slow) evaluation in a worker thread while showing elapsed time."""
@@ -70,6 +69,32 @@ def run_evaluation_with_progress(concept, audio_bytes, filename):
             status.update(label=f"Analysis complete ({int(time.time() - start)} s)", state="complete", expanded=False)
             return result
 
+
+def waveform_figure(audio_bytes, filename):
+    import librosa
+    suffix = os.path.splitext(filename)[1] or ".wav"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(audio_bytes)
+        path = tmp.name
+    try:
+        y, sr = librosa.load(path, sr=None)
+    finally:
+        os.remove(path)
+    fig, ax = plt.subplots(figsize=(6, 1.6))
+    t = np.linspace(0, len(y) / sr, num=len(y))
+    ax.plot(t, y, color="#2563eb", linewidth=0.6)
+    ax.set_xlabel("Time (s)", fontsize=8, color="#475569")
+    ax.set_yticks([])
+    ax.tick_params(labelsize=8, colors="#475569")
+    for side in ("top", "right", "left"):
+        ax.spines[side].set_visible(False)
+    ax.spines["bottom"].set_color("#cbd5e1")
+    fig.tight_layout()
+    return fig
+
+
+# ---------- Data ----------
+
 try:
     concepts = api.get_concepts()
     backend_error = None
@@ -83,278 +108,151 @@ if "current_evaluation" not in st.session_state and st.query_params.get("attempt
     except (BackendError, ValueError):
         st.query_params.pop("attempt", None)
 
-# Sidebar configuration
+
+# ---------- Sidebar: add a concept ----------
+
 with st.sidebar:
-    st.markdown("### 📚 Practice Concept")
-    
-    if concepts:
-        by_id = {c["id"]: c for c in concepts}
-        # Keep the choice across reruns and page reloads (?concept=<id>)
-        if st.session_state.get("concept_id") not in by_id:
-            st.session_state.concept_id = initial_concept_id(concepts, st.query_params.get("concept"))
-        st.selectbox(
-            "Choose a concept to explain:", options=list(by_id),
-            format_func=lambda cid: by_id[cid]["title"], key="concept_id",
-        )
-        st.query_params["concept"] = str(st.session_state.concept_id)
-        selected_concept = by_id[st.session_state.concept_id]
-        
-        # Show Concept Details
-        st.markdown("**📖 Description**")
-        st.html(description_html(selected_concept["description"]))
-
-        # Show Keywords
-        st.markdown("**🔑 Required Keywords**")
-        st.html(keyword_badges_html([(kw, PLAIN) for kw in selected_concept["keywords"]]))
-    else:
-        if backend_error:
-            show_error(backend_error)
-        else:
-            st.info("No concepts yet. Add one below.")
-        selected_concept = None
-
-    st.markdown("---")
-    
-    # Hide System Configuration inside an expander so sidebar is clean
-    with st.expander("🛠️ System Configuration", expanded=False):
-        gemini_key = os.getenv("GEMINI_API_KEY", "")
-        new_gemini_key = st.text_input("Google Gemini API Key", value=gemini_key, type="password", help="Enables advanced qualitative AI analysis & summaries")
-        
-        if new_gemini_key != gemini_key:
-            # Save key dynamically to .env
-            try:
-                with open(".env", "a") as f:
-                    f.write(f"\nGEMINI_API_KEY={new_gemini_key}\n")
-                st.success("API Key saved to .env! (Restart backend to apply)")
-            except Exception as e:
-                st.error(f"Failed to save key: {e}")
-
-    st.markdown("---")
-    st.markdown("### ➕ Add New Concept")
-    with st.expander("Create Custom Topic"):
-        new_title = st.text_input("Title (e.g. 'REST API')")
-        new_desc = st.text_area("Ideal Definition")
-        new_kws = st.text_input("Keywords (comma separated)")
-        if st.button("Submit Concept"):
-            if new_title and new_desc and new_kws:
+    st.subheader("Add a concept")
+    st.caption("Add your own topic with a reference definition and the keywords a good explanation should mention.")
+    with st.form("new_concept", clear_on_submit=True):
+        new_title = st.text_input("Title", placeholder="e.g. REST API")
+        new_desc = st.text_area("Reference definition")
+        new_kws = st.text_input("Keywords (comma separated)", placeholder="e.g. client, server, HTTP")
+        if st.form_submit_button("Add concept", type="primary"):
+            keywords = [kw.strip() for kw in new_kws.split(",") if kw.strip()]
+            if new_title.strip() and new_desc.strip() and keywords:
                 try:
-                    created = api.create_concept(new_title, new_desc, [kw.strip() for kw in new_kws.split(",") if kw.strip()])
+                    created = api.create_concept(new_title.strip(), new_desc.strip(), keywords)
                     st.session_state.concept_id = created["id"]
                     st.rerun()
                 except BackendError as e:
                     show_error(e)
             else:
-                st.warning("Please fill all fields.")
+                st.warning("Please fill in the title, definition and at least one keyword.")
 
-# Main Dashboard Layout
-col_left, col_right = st.columns([1, 1.2])
 
-with col_left:
+# ---------- Header ----------
+
+st.html(
+    "<div class='app-eyebrow'>VBCUA</div>"
+    "<h1 class='app-title'>Concept Understanding Analyser</h1>"
+    "<p class='app-subtitle'>Explain a computing concept out loud and get feedback on your understanding and delivery.</p>"
+)
+
+if backend_error:
+    show_error(backend_error)
+
+col_input, col_results = st.columns([5, 7], gap="large")
+
+
+# ---------- Steps 1 and 2: input ----------
+
+with col_input:
     with st.container(border=True):
-        st.markdown("### 🎙️ Spoken Explanation Input")
-        st.markdown("Explain the selected concept out loud. You can record directly using your microphone or upload an audio file.")
-        
-        audio_data = None
-        filename = "recording.wav"
-        
-        # Audio recorder
-        if hasattr(st, "audio_input"):
-            st.markdown("**Option 1: Record live speech**")
-            recording = st.audio_input("Click to start recording your voice")
+        step_title(1, "Choose a concept")
+        if concepts:
+            by_id = {c["id"]: c for c in concepts}
+            # Keep the choice across reruns and page reloads (?concept=<id>)
+            if st.session_state.get("concept_id") not in by_id:
+                st.session_state.concept_id = initial_concept_id(concepts, st.query_params.get("concept"))
+            st.selectbox(
+                "Concept", options=list(by_id), format_func=lambda cid: by_id[cid]["title"],
+                key="concept_id", label_visibility="collapsed",
+            )
+            st.query_params["concept"] = str(st.session_state.concept_id)
+            selected_concept = by_id[st.session_state.concept_id]
+            with st.expander("Reference definition and keywords"):
+                st.html(description_html(selected_concept["description"]))
+                st.html(keyword_badges_html([(kw, PLAIN) for kw in selected_concept["keywords"]]))
+        else:
+            selected_concept = None
+            st.info("No concepts available yet. Add one from the sidebar.")
+
+        st.divider()
+        step_title(2, "Record or upload your explanation")
+        mode = st.segmented_control(
+            "Input", ["Record", "Upload"], default="Record", key="input_mode", label_visibility="collapsed",
+        )
+        audio_data, filename = None, "recording.wav"
+        if mode == "Upload":
+            uploaded = st.file_uploader("Audio file (.wav, .mp3, .m4a)", type=["wav", "mp3", "m4a"])
+            if uploaded is not None:
+                audio_data, filename = uploaded.read(), uploaded.name
+        else:
+            recording = st.audio_input("Click the microphone to start, and again to stop")
             if recording is not None:
                 audio_data = recording.read()
-                filename = "recording.wav"
-                st.audio(audio_data, format="audio/wav")
-        else:
-            st.info("Direct recording requires Streamlit 1.34+. Please use the file uploader below.")
-        
-        st.markdown("<br>**Option 2: Upload audio file (.wav, .mp3, .m4a)**", unsafe_allow_html=True)
-        uploaded_file = st.file_uploader("Upload audio explanation", type=["wav", "mp3", "m4a"])
-        if uploaded_file is not None:
-            audio_data = uploaded_file.read()
-            filename = uploaded_file.name
-            st.audio(audio_data, format=f"audio/{os.path.splitext(filename)[1][1:]}")
-            
-        st.markdown("---")
-        
-        if audio_data and selected_concept:
-            # The button names the concept so the explanation is never graded against the wrong one
-            if st.button(f"🚀 Analyze explanation of {selected_concept['title']}"):
-                result = run_evaluation_with_progress(selected_concept, audio_data, filename)
-                if result:
-                    show_evaluation(result)
-                    st.rerun()
-        elif not selected_concept:
-            st.warning("Please create or select a concept in the sidebar before evaluating.")
-        else:
-            st.info("Record your explanation or upload a file to begin the evaluation.")
+        st.caption("Aim for 60–120 seconds, in a quiet room.")
 
-    # Waveform Display
-    if audio_data:
-        with st.container(border=True):
-            st.markdown("### 📈 Spoken Audio Waveform")
-            try:
-                import librosa
-                import io
-                # We can save bytes to a temp file, load using librosa, and plot
-                import tempfile
-                with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(filename)[1]) as temp_audio:
-                    temp_audio.write(audio_data)
-                    temp_audio_path = temp_audio.name
-                    
-                y, sr = librosa.load(temp_audio_path, sr=None)
-                os.remove(temp_audio_path)
-                
-                # Matplotlib dark waveform plot
-                fig, ax = plt.subplots(figsize=(6, 2.2), facecolor='none')
-                ax.set_facecolor('none')
-                time = np.linspace(0, len(y)/sr, num=len(y))
-                ax.plot(time, y, color='#60a5fa', linewidth=0.8, alpha=0.8)
-                ax.fill_between(time, y, color='#4f46e5', alpha=0.15)
-                
-                # Styling
-                ax.spines['bottom'].set_color((1.0, 1.0, 1.0, 0.1))
-                ax.spines['left'].set_color((1.0, 1.0, 1.0, 0.1))
-                ax.spines['top'].set_visible(False)
-                ax.spines['right'].set_visible(False)
-                ax.tick_params(colors=(1.0, 1.0, 1.0, 0.5), labelsize=8)
-                ax.set_xlabel("Time (s)", color=(1.0, 1.0, 1.0, 0.5), fontsize=8)
-                ax.set_ylabel("Amplitude", color=(1.0, 1.0, 1.0, 0.5), fontsize=8)
-                ax.grid(True, color=(1.0, 1.0, 1.0, 0.05), linestyle='--')
-                
-                st.pyplot(fig, clear_figure=True)
-            except Exception as e:
-                st.warning(f"Waveform rendering skipped: {e}")
+        if audio_data:
+            with st.expander("Waveform"):
+                try:
+                    st.pyplot(waveform_figure(audio_data, filename), clear_figure=True)
+                except Exception:
+                    st.caption("Waveform preview is not available for this file.")
 
-with col_right:
-    if "current_evaluation" in st.session_state:
-        eval_res = st.session_state.current_evaluation
-        concept_title = get_concept_title(eval_res)
-        
-        with st.container(border=True):
-            st.markdown(f"### 📊 Analysis Results: **{concept_title}**")
-            
-            # Dashboard KPIs
-            kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
-            with kpi_col1:
-                st.html(f"""
-                <div class='metric-box purple'>
-                    <div class='metric-label'>Overall Score</div>
-                    <div class='metric-value purple'>{eval_res['final_score']:.1f}%</div>
-                    <div style='font-size:0.8rem; color:#bd00ff;'>{esc(eval_res['understanding_grade'])}</div>
-                </div>
-                """)
-                
-            with kpi_col2:
-                st.html(f"""
-                <div class='metric-box blue'>
-                    <div class='metric-label'>Semantic Match</div>
-                    <div class='metric-value blue'>{eval_res['semantic_score']:.1f}%</div>
-                    <div style='font-size:0.8rem; color:#00f0ff;'>Sentence-BERT Match</div>
-                </div>
-                """)
-                
-            with kpi_col3:
-                # Stored backend fluency score (never recomputed here)
-                fluency_display = fluency_text(eval_res)
-                pause_display = eval_res.get("pause_ratio_v1")
-                if pause_display is None:
-                    pause_display = eval_res["pause_ratio"]
-                st.html(f"""
-                <div class='glass-card' style='padding:15px !important; margin:0 !important; border-color: rgba(0, 255, 102, 0.2) !important; text-align:center;'>
-                    <div class='metric-label'>Speech Fluency</div>
-                    <div class='metric-value green'>{esc(fluency_display)}</div>
-                    <div style='font-size:0.8rem; color:#00ff66;'>P: {pause_display*100:.0f}% | Fillers (exp.): {esc(eval_res['filler_words_count'])}</div>
-                </div>
-                """)
-            
-            st.caption("Filler counts are experimental — speech-to-text usually removes 'um/uh'. Not used in scoring.")
-            
-            # Microphone check (from raw RMS; not part of any score)
+        can_analyse = bool(audio_data and selected_concept)
+        label = f"Analyse explanation of {selected_concept['title']}" if selected_concept else "Analyse explanation"
+        # The button names the concept so the explanation is never graded against the wrong one
+        if st.button(label, type="primary", use_container_width=True, disabled=not can_analyse):
+            result = run_evaluation_with_progress(selected_concept, audio_data, filename)
+            if result:
+                show_evaluation(result)
+                st.rerun()
+
+
+# ---------- Step 3: results ----------
+
+with col_results:
+    with st.container(border=True):
+        if "current_evaluation" in st.session_state:
+            eval_res = st.session_state.current_evaluation
+            concept_title = get_concept_title(eval_res)
+            step_title(3, f"Results: {concept_title}")
+
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Overall", f"{eval_res['final_score']:.1f}", border=True)
+            c2.metric("Similarity", f"{eval_res['semantic_score']:.1f}", border=True)
+            c3.metric("Fluency", fluency_text(eval_res), border=True)
+            st.caption(eval_res["understanding_grade"])
+
             if eval_res.get("recording_warning"):
-                st.warning(eval_res["recording_warning"], icon="🎙️")
-                
-            st.markdown("---")
-            
-            # Plotly Score Gauge
-            fig = go.Figure(go.Indicator(
-                mode = "gauge+number",
-                value = eval_res['final_score'],
-                domain = {'x': [0, 1], 'y': [0, 1]},
-                title = {'text': "Comprehension Accuracy & Speech Mastery", 'font': {'size': 14, 'color': '#ffffff'}},
-                gauge = {
-                    'axis': {'range': [None, 100], 'tickwidth': 1, 'tickcolor': "#ffffff"},
-                    'bar': {'color': "#4f46e5"},
-                    'bgcolor': "rgba(255,255,255,0.05)",
-                    'borderwidth': 2,
-                    'bordercolor': "rgba(255,255,255,0.1)",
-                    'steps': [
-                        {'range': [0, 50], 'color': 'rgba(239, 68, 68, 0.15)'},
-                        {'range': [50, 80], 'color': 'rgba(245, 158, 11, 0.15)'},
-                        {'range': [80, 100], 'color': 'rgba(16, 185, 129, 0.15)'}
-                    ],
-                    'threshold': {
-                        'line': {'color': "#60a5fa", 'width': 4},
-                        'thickness': 0.75,
-                        'value': eval_res['final_score']
-                    }
-                }
-            ))
-            fig.update_layout(
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                font={'color': "#ffffff", 'family': "Outfit"},
-                height=250,
-                margin=dict(l=20, r=20, t=40, b=20)
-            )
-            st.plotly_chart(fig, use_container_width=True)
-    
-            # Keyword Coverage Visualization
-            st.markdown("#### 🔑 Core Keyword Coverage Check")
-            # Stored matches for the evaluated attempt's concept (not the sidebar selection)
+                st.warning(eval_res["recording_warning"], icon=":material/mic_off:")
+
+            st.markdown("**Keywords**")
             badges = keyword_badges(eval_res)
             if badges:
                 st.html(keyword_badges_html(badges))
             if badges and all(status not in (FOUND, MISSING) for _, status in badges):
                 st.caption("Keyword matches were not stored for this older attempt.")
 
-            st.markdown("---")
-    
-            # Transcription Display
-            st.markdown("#### 📝 Speech Transcription")
+            st.markdown("**Transcript**")
             st.html(transcript_html(eval_res["transcription"]))
-            st.html("<br>")
-    
-            # Educational AI Feedback Section
-            st.markdown("#### 💡 AI Tutor Review & Recommendations")
+
+            st.markdown("**Feedback**")
             notice = feedback_notice(eval_res)
             if notice:
                 st.info(notice)
             st.markdown(eval_res["feedback"])
 
-            # Download PDF Report button
-            st.markdown("---")
             try:
                 st.download_button(
-                    label="📥 Download Detailed PDF Assessment Report",
-                    data=api.get_pdf(eval_res["id"]),
+                    "Download PDF report", data=api.get_pdf(eval_res["id"]),
                     file_name=f"VBCUA_Report_{concept_title.replace(' ', '_')}_{eval_res['id']}.pdf",
-                    mime="application/pdf"
+                    mime="application/pdf", icon=":material/download:",
                 )
             except BackendError as e:
                 show_error(e)
-    else:
-        with st.container(border=True):
-            st.html("""
-            <div style='text-align: center; padding: 30px 0;'>
-                <h3 style='color: white;'>🎙️ Awaiting Spoken Explanation</h3>
-                <p style='color: #a0aec0; font-size: 0.95rem;'>Explain a conceptual topic in your own words, and we'll analyze both your comprehension and your delivery fluency here.</p>
-            </div>
-            """)
+        else:
+            st.html(
+                "<div class='empty-state'><h3>No results yet</h3>"
+                "<p>Choose a concept, record or upload your explanation, then select Analyse.</p></div>"
+            )
 
-# Evaluation History Timeline
-st.markdown("---")
-st.markdown("### 🕰️ Evaluation Performance History")
+
+# ---------- History ----------
+
+st.subheader("History")
 try:
     history = api.get_evaluations()
 except BackendError as e:
@@ -379,4 +277,4 @@ if history:
         st.rerun()
     st.session_state.history_selected_id = selected_id
 else:
-    st.info("No evaluations completed yet. Record or upload an audio file to view your performance history.")
+    st.caption("No attempts yet. Your past attempts will appear here.")
