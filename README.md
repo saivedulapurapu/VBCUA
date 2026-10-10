@@ -106,6 +106,12 @@ GEMINI_API_KEY=gemini_api_key_here
 # Gemini model for all LLM calls (see https://ai.google.dev/gemini-api/docs/models)
 GEMINI_MODEL=gemini-3.8-flash
 
+# Gemini thinking effort for feedback (minimal, low, medium, high; empty = model default)
+GEMINI_THINKING_LEVEL=low
+
+# Load Whisper and Sentence-BERT at backend startup
+PRELOAD_MODELS=true
+
 # Whisper model size (tiny, base, small, medium, large)
 WHISPER_MODEL=small
 

@@ -138,3 +138,21 @@ def test_migration_adds_columns_and_old_rows_get_null():
     for column in main.ADDED_EVALUATION_COLUMNS:
         if column != "final_score":  # has DEFAULT 0.0
             assert row[column] is None, column
+
+
+def test_preload_models_loads_each_and_never_raises():
+    calls = []
+
+    def ok():
+        calls.append("ok")
+
+    def broken():
+        calls.append("broken")
+        raise RuntimeError("download failed")
+
+    main.preload_models({"A": ok, "B": broken, "C": ok})  # must not raise
+    assert calls == ["ok", "broken", "ok"]
+
+
+def test_preload_enabled_by_default():
+    assert type(settings).model_fields["PRELOAD_MODELS"].default is True

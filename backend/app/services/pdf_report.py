@@ -202,11 +202,13 @@ def generate_pdf_report(evaluation: Any, concept_title: str, output_path: str) -
         
         # Simple Markdown parsing
         # Headers
-        if p_clean.startswith('### '):
-            story.append(Paragraph(p_clean[4:], ParagraphStyle('H3', parent=styles['Heading3'], textColor=colors.HexColor('#3a0ca3'), spaceBefore=8, spaceAfter=4)))
-        elif p_clean.startswith('#### '):
-            story.append(Paragraph(p_clean[5:], ParagraphStyle('H4', parent=styles['Heading4'], textColor=colors.HexColor('#2b2d42'), spaceBefore=6, spaceAfter=3)))
-        elif p_clean.startswith('- '):
+        heading = re.match(r'^(#{1,6})\s+(.*)$', p_clean)
+        if re.fullmatch(r'[-*_]{3,}', p_clean):
+            continue  # Markdown horizontal rule
+        elif heading:
+            # Any heading level is shown as one small section heading
+            story.append(Paragraph(heading.group(2), ParagraphStyle('H4', parent=styles['Heading4'], textColor=colors.HexColor('#2b2d42'), spaceBefore=6, spaceAfter=3)))
+        elif p_clean.startswith('- ') or p_clean.startswith('* '):
             story.append(Paragraph(f"&bull; {p_clean[2:]}", ParagraphStyle('Bullet', parent=body_style, leftIndent=10)))
         elif p_clean.startswith('1. ') or p_clean.startswith('2. ') or p_clean.startswith('3. '):
             story.append(Paragraph(p_clean, ParagraphStyle('List', parent=body_style, leftIndent=10)))

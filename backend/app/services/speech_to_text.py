@@ -1,5 +1,6 @@
 import os
 import logging
+import threading
 from typing import Any, Dict, List, Optional
 from backend.app.config import settings
 from backend.app.services import llm_client
@@ -8,14 +9,17 @@ logger = logging.getLogger(__name__)
 
 # Lazy load whisper to avoid slow startup times; one cached model per size
 _whisper_models: Dict[str, Any] = {}
+# Startup preloading and a request may ask for the same model at once
+_whisper_lock = threading.Lock()
 
 def get_whisper_model(model_name: Optional[str] = None):
     model_name = model_name or settings.WHISPER_MODEL
-    if model_name not in _whisper_models:
-        import whisper
-        logger.info(f"Loading local Whisper model: {model_name}...")
-        _whisper_models[model_name] = whisper.load_model(model_name)
-    return _whisper_models[model_name]
+    with _whisper_lock:
+        if model_name not in _whisper_models:
+            import whisper
+            logger.info(f"Loading local Whisper model: {model_name}...")
+            _whisper_models[model_name] = whisper.load_model(model_name)
+        return _whisper_models[model_name]
 
 def mean_avg_logprob(segments: List[Dict[str, Any]]) -> Optional[float]:
     """

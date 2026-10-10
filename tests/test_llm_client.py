@@ -51,6 +51,7 @@ def client(monkeypatch):
     monkeypatch.setattr(llm_client, "_get_client", lambda: holder["client"])
     monkeypatch.setattr(settings, "GEMINI_API_KEY", "fake-key")
     monkeypatch.setattr(settings, "GEMINI_MODEL", "gemini-test-model")
+    monkeypatch.setattr(settings, "GEMINI_THINKING_LEVEL", "low")
     configure.get = lambda: holder["client"]
     return configure
 
@@ -70,7 +71,7 @@ def test_generate_text_uses_configured_model(client):
     call = fake.models.calls[0]
     assert call["model"] == "gemini-test-model"
     assert call["contents"] == "prompt"
-    assert call["config"] == {"system_instruction": "be kind", "temperature": 0.2}
+    assert call["config"] == {"system_instruction": "be kind", "temperature": 0.2, "thinking_config": {"thinking_level": "LOW"}}
 
 
 def test_generate_json_with_pydantic_schema(client):
@@ -203,3 +204,36 @@ def test_does_not_retry_permanent_errors(flaky, error):
         llm_client.generate_text("p")
     assert models.calls == 1
     assert flaky.sleeps == []
+
+
+
+# --- Thinking level ---
+
+def test_default_thinking_level_is_low():
+    assert type(settings).model_fields["GEMINI_THINKING_LEVEL"].default == "low"
+
+
+@pytest.mark.parametrize("level, expected", [("high", {"thinking_level": "HIGH"}), ("minimal", {"thinking_level": "MINIMAL"})])
+def test_explicit_thinking_level(client, level, expected):
+    fake = client(text="ok")
+    llm_client.generate_text("p", thinking_level=level)
+    assert fake.models.calls[0]["config"]["thinking_config"] == expected
+
+
+def test_thinking_level_none_uses_model_default(client):
+    fake = client(text='{"a": 1}')
+    llm_client.generate_json("p", thinking_level=None)
+    assert "thinking_config" not in fake.models.calls[0]["config"]
+
+
+def test_empty_setting_uses_model_default(client, monkeypatch):
+    monkeypatch.setattr(settings, "GEMINI_THINKING_LEVEL", "")
+    fake = client(text="ok")
+    llm_client.generate_text("p")
+    assert "thinking_config" not in fake.models.calls[0]["config"]
+
+
+def test_thinking_config_accepted_by_sdk():
+    from google.genai import types
+    for level in ["minimal", "low", "medium", "high"]:
+        types.GenerateContentConfig(**llm_client._base_config("s", 0.2, level))

@@ -153,12 +153,16 @@ def generate_ai_feedback(
     - Speech analysis observations: [{observations}]
     - Fluency Score: {fluency_result['fluency_score']}/100
     
-    Please write a structured evaluation report. Use markdown formatting. Include the following sections:
-    1. **Conceptual Accuracy & Comprehension**: Discuss what they explained correctly, what they missed, and any misconceptions they showed.
-    2. **Speech Delivery & Fluency**: Analyze their pacing and pauses based on the observations.
-    3. **Key Suggestions for Improvement**: Provide 2-3 specific, actionable steps to help them explain this topic better next time.
-    
-    Keep the tone professional, encouraging, and constructive. Return ONLY the markdown formatted response.
+    Write concise feedback of about 200–250 words in markdown, with exactly these three sections.
+    Use "####" for the section headings; do not use "#", "##" or "###" headings and do not add a title.
+    #### Conceptual Accuracy
+    What they explained correctly, what they missed, and any misconceptions.
+    #### Delivery
+    One or two sentences on pacing and pauses, based on the observations.
+    #### Suggestions
+    2–3 specific, actionable steps to explain this topic better next time, as a bulleted list.
+
+    Keep the tone professional, encouraging, and constructive. Return ONLY the markdown.
     """
     
     return llm_client.generate_text(prompt)

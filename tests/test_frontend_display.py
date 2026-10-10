@@ -180,3 +180,14 @@ def test_details_rows_cover_all_sub_scores():
     assert rows["Feedback source"]["Value"] == "rule-based"
     assert rows["Filler words"]["Note"] == "Experimental, not scored"
     assert rows["Scoring methods"]["Value"] == "semantic v1, fluency v1"
+
+
+from frontend.display import demote_headings  # noqa: E402
+
+
+def test_demote_headings():
+    md = "# Assessment Report\n## Section\n### Sub\n#### Small\nText with # hash\n#hashtag\n- bullet"
+    assert demote_headings(md).splitlines() == [
+        "#### Assessment Report", "#### Section", "#### Sub", "#### Small",
+        "Text with # hash", "#hashtag", "- bullet",
+    ]

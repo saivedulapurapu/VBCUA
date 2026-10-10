@@ -1,5 +1,7 @@
 import os
 import shutil
+import threading
+import time
 import uuid
 import logging
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
@@ -81,12 +83,28 @@ def migrate_evaluations_table(session_factory):
         finally:
             db.close()
 
+def preload_models(loaders=None):
+    """Loads Whisper and Sentence-BERT so the first attempt does not wait for them. Never raises."""
+    if loaders is None:
+        from backend.app.services.semantic import get_sbert_model
+        from backend.app.services.speech_to_text import get_whisper_model
+        loaders = {"Whisper": get_whisper_model, "Sentence-BERT": get_sbert_model}
+    for name, load in loaders.items():
+        start = time.time()
+        try:
+            load()
+            logger.info(f"Preloaded {name} in {time.time() - start:.1f}s")
+        except Exception as e:
+            logger.warning(f"Could not preload {name}: {e}")
+
 # Database Startup Actions
 @app.on_event("startup")
 def startup_db_setup():
     logger.info("Initializing database and tables...")
     Base.metadata.create_all(bind=engine)
     migrate_evaluations_table(lambda: next(get_db()))
+    if settings.PRELOAD_MODELS:
+        threading.Thread(target=preload_models, name="preload-models", daemon=True).start()
 
     # Seed default concepts if table is empty
     db = next(get_db())

@@ -11,7 +11,7 @@ import api
 from api import BackendError
 from display import (
     FOUND, MISSING, PLAIN, concept_title as get_concept_title, description_html, details_rows,
-    feedback_notice, grade_badge_color, history_rows, initial_concept_id, keyword_badges,
+    demote_headings, feedback_notice, grade_badge_color, history_rows, initial_concept_id, keyword_badges,
     keyword_badges_html, score_cards, transcript_html,
 )
 
@@ -238,7 +238,7 @@ with col_results:
                 ["Feedback", "Keywords", "Transcript", "Details"]
             )
             with tab_feedback:
-                st.markdown(eval_res["feedback"])
+                st.markdown(demote_headings(eval_res["feedback"]))
             with tab_keywords:
                 badges = keyword_badges(eval_res)
                 found = sum(1 for _, status in badges if status == FOUND)

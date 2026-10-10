@@ -169,3 +169,15 @@ def details_rows(eval_res: Dict[str, Any]) -> List[Dict[str, str]]:
         ("Scoring methods", f"semantic {eval_res.get('semantic_method') or 'n/a'}, fluency {eval_res.get('fluency_method') or 'n/a'}", "B0 = original baseline"),
     ]
     return [{"Measure": m, "Value": v, "Note": n} for m, v, n in rows]
+
+
+def demote_headings(markdown: str) -> str:
+    """Render any feedback heading (#, ##, ###…) as a small "####" heading so it fits the results card."""
+    lines = []
+    for line in markdown.splitlines():
+        stripped = line.lstrip()
+        level = len(stripped) - len(stripped.lstrip("#"))
+        if 1 <= level <= 6 and stripped[level:level + 1] == " ":
+            line = "#### " + stripped[level + 1:]
+        lines.append(line)
+    return "\n".join(lines)

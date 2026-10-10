@@ -73,17 +73,33 @@ def _generate(contents: Any, config: Dict[str, Any]) -> str:
         raise LLMError(f"{model_name()} returned an empty response")
     return text
 
-def _base_config(system: Optional[str], temperature: Optional[float]) -> Dict[str, Any]:
+# Sentinel: use settings.GEMINI_THINKING_LEVEL
+DEFAULT_THINKING = object()
+
+def _base_config(system: Optional[str], temperature: Optional[float], thinking_level: Any = DEFAULT_THINKING) -> Dict[str, Any]:
     config: Dict[str, Any] = {}
     if system:
         config["system_instruction"] = system
     if temperature is not None:
         config["temperature"] = temperature
+    level = settings.GEMINI_THINKING_LEVEL if thinking_level is DEFAULT_THINKING else thinking_level
+    if level:
+        config["thinking_config"] = {"thinking_level": str(level).upper()}
     return config
 
-def generate_text(prompt: str, *, system: Optional[str] = None, temperature: Optional[float] = None) -> str:
-    """Returns the model's plain-text answer to the prompt."""
-    return _generate(prompt, _base_config(system, temperature))
+def generate_text(
+    prompt: str,
+    *,
+    system: Optional[str] = None,
+    temperature: Optional[float] = None,
+    thinking_level: Any = DEFAULT_THINKING,
+) -> str:
+    """
+    Returns the model's plain-text answer to the prompt.
+    thinking_level: "minimal" / "low" / "medium" / "high", None for the model default,
+    or omitted to use settings.GEMINI_THINKING_LEVEL.
+    """
+    return _generate(prompt, _base_config(system, temperature, thinking_level))
 
 def generate_json(
     prompt: str,
@@ -91,12 +107,14 @@ def generate_json(
     schema: Union[Type[BaseModel], Dict[str, Any], None] = None,
     system: Optional[str] = None,
     temperature: Optional[float] = 0.0,
+    thinking_level: Any = DEFAULT_THINKING,
 ) -> Dict[str, Any]:
     """
     Returns the model's answer parsed as JSON.
     schema: a Pydantic model (output is validated against it) or a JSON-schema dict.
+    thinking_level: as for generate_text.
     """
-    config = _base_config(system, temperature)
+    config = _base_config(system, temperature, thinking_level)
     config["response_mime_type"] = "application/json"
     is_model = isinstance(schema, type) and issubclass(schema, BaseModel)
     if schema is not None:
