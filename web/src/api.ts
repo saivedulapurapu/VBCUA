@@ -21,6 +21,7 @@ const DEFAULT_TIMEOUT_MS = 15_000
 function statusMessage(status: number): string {
   if (status === 404) return 'The requested item was not found.'
   if (status === 503) return 'AI features are not configured on the server (no Gemini API key).'
+  if (status === 429) return 'The AI usage limit for your Gemini API key has been reached. Try again later, or choose one of the library concepts.'
   if (status === 502) return 'The AI service could not prepare this right now. Please try again later.'
   if (status === 400 || status === 422) return 'The server could not process this request. Check the inputs and try again.'
   return 'The analysis failed on the server. Please try again.'

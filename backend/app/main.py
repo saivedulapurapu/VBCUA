@@ -226,6 +226,8 @@ def generate_concept(request: ConceptGenerate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=503, detail="AI is not configured (GEMINI_API_KEY is missing)")
     except llm_client.LLMError as e:
         logger.error(f"Reference generation failed for {request.topic!r}: {e}")
+        if llm_client.is_quota_exhausted(e.__cause__ or e):
+            raise HTTPException(status_code=429, detail=f"Gemini quota exhausted for {settings.GEMINI_DISCOVER_MODEL}: {e}")
         raise HTTPException(status_code=502, detail=f"Reference generation failed: {e}")
 
 

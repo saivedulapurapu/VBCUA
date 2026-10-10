@@ -264,3 +264,17 @@ def test_quota_errors_are_not_retried(monkeypatch):
     with pytest.raises(llm_client.LLMError):
         llm_client.generate_text("p")
     assert len(calls) == 1
+
+
+def test_generate_endpoint_reports_exhausted_quota(client, gemini, monkeypatch):
+    from google.genai import errors as genai_errors
+    quota = genai_errors.ClientError(429, {"error": {"code": 429, "message": "You exceeded your current quota", "status": "RESOURCE_EXHAUSTED"}})
+
+    def fail(*args, **kwargs):
+        raise llm_client.LLMError("gemini call failed: 429 quota") from quota
+
+    monkeypatch.setattr(llm_client, "generate_grounded_json", fail)
+    monkeypatch.setattr(llm_client, "generate_json", fail)
+    response = client.post("/api/concepts/generate", json={"topic": "T20 Cricket"})
+    assert response.status_code == 429
+    assert "quota" in response.json()["detail"]
