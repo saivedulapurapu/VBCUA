@@ -11,7 +11,7 @@ def make_evaluation(**overrides):
         filler_words_count=3, filler_words_ratio=2.5, pause_ratio=0.5, pause_ratio_v1=0.2,
         rms_energy=0.05, speech_duration=10.0, final_score=50.0,
         understanding_grade="Moderate Understanding", feedback="### Report\n- ok",
-        audio_path=None, created_at=datetime(2026, 10, 10),
+        fluency_score=80.0, audio_path=None, created_at=datetime(2026, 10, 10),
     )
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -39,3 +39,14 @@ def test_pdf_shows_v1_pause_ratio(tmp_path):
 def test_pdf_falls_back_to_b0_pause_for_old_rows(tmp_path):
     text = render(tmp_path, make_evaluation(pause_ratio=0.37, pause_ratio_v1=None))
     assert b"37.0%" in text
+
+
+def test_pdf_shows_stored_fluency_score(tmp_path):
+    # filler ratio 2.5 would give 90.0% with the old approximation
+    text = render(tmp_path, make_evaluation(fluency_score=73.0))
+    assert b"73.0%" in text
+    assert b"90.0%" not in text
+
+
+def test_pdf_fluency_na_for_old_rows(tmp_path):
+    assert b"n/a" in render(tmp_path, make_evaluation(fluency_score=None))

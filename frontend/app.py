@@ -1,5 +1,4 @@
 import os
-import re
 import requests
 import numpy as np
 import matplotlib.pyplot as plt
@@ -7,6 +6,7 @@ import streamlit as st
 import plotly.graph_objects as go
 from datetime import datetime
 from dotenv import load_dotenv
+from display import FOUND, MISSING, concept_title as get_concept_title, fluency_text, keyword_badges
 
 # Load local environment variables (for Gemini key check)
 load_dotenv()
@@ -219,7 +219,7 @@ with col_left:
 with col_right:
     if "current_evaluation" in st.session_state:
         eval_res = st.session_state.current_evaluation
-        concept_title = eval_res["concept"]["title"] if eval_res.get("concept") else selected_title
+        concept_title = get_concept_title(eval_res)
         
         with st.container(border=True):
             st.markdown(f"### 📊 Analysis Results: **{concept_title}**")
@@ -245,16 +245,15 @@ with col_right:
                 """)
                 
             with kpi_col3:
-                # Simple fluency display
-                fluency_display = 100.0 - (eval_res["filler_words_ratio"] * 4.0)
-                fluency_display = max(10.0, min(100.0, fluency_display))
+                # Stored backend fluency score (never recomputed here)
+                fluency_display = fluency_text(eval_res)
                 pause_display = eval_res.get("pause_ratio_v1")
                 if pause_display is None:
                     pause_display = eval_res["pause_ratio"]
                 st.html(f"""
                 <div class='glass-card' style='padding:15px !important; margin:0 !important; border-color: rgba(0, 255, 102, 0.2) !important; text-align:center;'>
                     <div class='metric-label'>Speech Fluency</div>
-                    <div class='metric-value green'>{fluency_display:.0f}%</div>
+                    <div class='metric-value green'>{fluency_display}</div>
                     <div style='font-size:0.8rem; color:#00ff66;'>P: {pause_display*100:.0f}% | Fillers (exp.): {eval_res['filler_words_count']}</div>
                 </div>
                 """)
@@ -302,19 +301,21 @@ with col_right:
     
             # Keyword Coverage Visualization
             st.markdown("#### 🔑 Core Keyword Coverage Check")
-            if selected_concept:
-                trans_clean = eval_res["transcription"].lower()
-                kws = selected_concept["keywords"]
-                
-                kw_elements = ""
-                for kw in kws:
-                    pattern = r'\b' + re.escape(kw.lower()) + r'\b'
-                    if re.search(pattern, trans_clean) or kw.lower() in trans_clean:
-                        kw_elements += f"<span class='badge badge-success'>✓ {kw}</span>"
-                    else:
-                        kw_elements += f"<span class='badge badge-danger'>✗ {kw}</span>"
+            # Stored matches for the evaluated attempt's concept (not the sidebar selection)
+            badges = keyword_badges(eval_res)
+            kw_elements = ""
+            for kw, status in badges:
+                if status == FOUND:
+                    kw_elements += f"<span class='badge badge-success'>✓ {kw}</span>"
+                elif status == MISSING:
+                    kw_elements += f"<span class='badge badge-danger'>✗ {kw}</span>"
+                else:
+                    kw_elements += f"<span class='badge badge-muted'>{kw}</span>"
+            if kw_elements:
                 st.html(kw_elements)
-                
+            if badges and all(status not in (FOUND, MISSING) for _, status in badges):
+                st.caption("Keyword matches were not stored for this older attempt.")
+
             st.markdown("---")
     
             # Transcription Display

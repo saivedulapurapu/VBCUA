@@ -118,6 +118,7 @@ def generate_pdf_report(evaluation: Any, concept_title: str, output_path: str) -
     
     # Metric KPI Cards Layout
     # Three columns: Overall Score, Semantic Score, Fluency Score
+    pause_ratio = evaluation.pause_ratio_v1 if evaluation.pause_ratio_v1 is not None else evaluation.pause_ratio
     kpi_data = [
         [
             Paragraph("Overall Score", card_label_style),
@@ -127,18 +128,17 @@ def generate_pdf_report(evaluation: Any, concept_title: str, output_path: str) -
         [
             Paragraph(f"{evaluation.final_score:.1f}%", card_val_style),
             Paragraph(f"{evaluation.semantic_score:.1f}%", card_val_style),
-            Paragraph(f"{100.0 - (evaluation.filler_words_ratio * 4.0):.1f}%", card_val_style) # Approximated fluency
+            # Stored fluency score; older attempts did not store it
+            Paragraph(f"{evaluation.fluency_score:.1f}%" if evaluation.fluency_score is not None else "n/a", card_val_style)
+        ],
+        [
+            Paragraph("", card_label_style),
+            Paragraph("", card_label_style),
+            Paragraph(f"P: {pause_ratio*100:.0f}% / Fillers (exp.): {evaluation.filler_words_count}", card_label_style)
         ]
     ]
-    
-    # Update fluency display logic based on evaluations
-    # Wait, the evaluation object itself has the metrics saved, so let's calculate the fluency score stored
-    # We will pass the exact values or retrieve them from evaluation
-    # Let's adjust fluency display to show the pause ratio and filler count:
-    pause_ratio = evaluation.pause_ratio_v1 if evaluation.pause_ratio_v1 is not None else evaluation.pause_ratio
-    kpi_data[1][2] = Paragraph(f"P: {pause_ratio*100:.0f}% / Fillers (exp.): {evaluation.filler_words_count}", card_val_style)
 
-    kpi_table = Table(kpi_data, colWidths=[2.1 * inch, 2.1 * inch, 2.1 * inch], rowHeights=[20, 35])
+    kpi_table = Table(kpi_data, colWidths=[2.1 * inch, 2.1 * inch, 2.1 * inch], rowHeights=[20, 35, 18])
     kpi_table.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#1a1c29')),
         ('ALIGN', (0,0), (-1,-1), 'CENTER'),
