@@ -118,6 +118,9 @@ PRELOAD_MODELS=true
 # Whisper model size (tiny, base, small, medium, large)
 WHISPER_MODEL=small
 
+# Device for Whisper and Sentence-BERT: cpu, cuda or auto (cuda needs a CUDA build of PyTorch)
+DEVICE=cpu
+
 # Fall back to Gemini transcription if local Whisper fails
 STT_GEMINI_FALLBACK=false
 ```
