@@ -9,14 +9,6 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 from typing import List
 
-# Dynamic static-ffmpeg path registration for Windows platforms
-try:
-    import static_ffmpeg
-    static_ffmpeg.add_paths()
-except Exception as e:
-    import logging
-    logging.getLogger(__name__).warning(f"Could not initialize static-ffmpeg: {e}")
-
 # Database & Config
 from backend.app.config import settings
 from backend.app.database import engine, Base, get_db

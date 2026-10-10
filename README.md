@@ -66,7 +66,7 @@ VBCUA/
 ### Prerequisites
 - **Python 3.10+**
 - **FFmpeg**: Required by Librosa/Whisper. 
-  * *Windows*: On startup, the application attempts to automatically register local system paths using `static-ffmpeg`. If missing, install FFmpeg on your system and add it to your environment `PATH`.
+  * *Windows*: Install FFmpeg (e.g. `winget install --id Gyan.FFmpeg -e`) and make sure `ffmpeg -version` works in a new terminal.
 
 ### Step 1: Clone the Repository
 ```bash
