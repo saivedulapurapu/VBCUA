@@ -1,5 +1,5 @@
 import { useId, useMemo, useRef, useState } from 'react'
-import { ChevronDown, Shuffle } from 'lucide-react'
+import { ChevronDown, Shuffle, Sparkles } from 'lucide-react'
 import type { Concept } from '../types'
 import { randomConcept } from '../lib/display'
 
@@ -55,7 +55,7 @@ export function ConceptPicker({ concepts, selectedId, onSelect }: Props) {
   return (
     <div className="picker">
       <div className="picker-row">
-        <div style={{ position: 'relative', flex: 1 }}>
+        <div style={{ position: 'relative' }}>
           <input
             ref={inputRef}
             className="field"
@@ -98,6 +98,7 @@ export function ConceptPicker({ concepts, selectedId, onSelect }: Props) {
                   onMouseEnter={() => setActive(i)}
                 >
                   {c.title}
+                  {c.source === 'ai-generated' && <span className="option-tag">AI reference</span>}
                 </li>
               ))}
             </ul>
@@ -108,8 +109,13 @@ export function ConceptPicker({ concepts, selectedId, onSelect }: Props) {
         </button>
       </div>
 
+      {selected?.source === 'ai-generated' && (
+        <div className="source-badge" title="The reference definition and keywords for this topic were written by AI. Scores are less reliable than for the curated concepts.">
+          <Sparkles size={14} aria-hidden /> AI-generated reference: review it below
+        </div>
+      )}
       {selected && (
-        <details className="disclosure">
+        <details className="disclosure" open={selected.source === 'ai-generated' ? true : undefined}>
           <summary>Reference definition and keywords</summary>
           <p>{selected.description}</p>
           <div className="chips">

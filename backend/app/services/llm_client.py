@@ -5,8 +5,9 @@ import the SDK directly, so the provider or model can be swapped in one place.
 """
 import json
 import logging
+import re
 import time
-from typing import Any, Dict, Optional, Type, Union
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 from pydantic import BaseModel, ValidationError
 
@@ -45,7 +46,21 @@ def _status_code(error: Exception) -> Optional[int]:
     code = getattr(error, "code", None)
     return code if isinstance(code, int) else None
 
+def is_quota_exhausted(error: Exception) -> bool:
+    """A 429 that reports an exhausted quota (not a short rate spike): retrying will not help."""
+    return _status_code(error) == 429 and "quota" in str(error).lower()
+
 def _generate(contents: Any, config: Dict[str, Any], model: Optional[str] = None) -> str:
+    return _response_text(_call(contents, config, model), model or model_name())
+
+def _response_text(response: Any, model: str) -> str:
+    text = (getattr(response, "text", None) or "").strip()
+    if not text:
+        raise LLMError(f"{model} returned an empty response")
+    return text
+
+def _call(contents: Any, config: Dict[str, Any], model: Optional[str] = None) -> Any:
+    """One generate_content call with retries on temporary errors; returns the raw response."""
     model = model or model_name()
     if not is_configured():
         raise LLMNotConfigured("GEMINI_API_KEY is not set")
@@ -62,17 +77,14 @@ def _generate(contents: Any, config: Dict[str, Any], model: Optional[str] = None
             raise
         except Exception as e:
             status = _status_code(e)
-            if status in RETRYABLE_STATUS and attempt < len(RETRY_DELAYS_S):
+            if status in RETRYABLE_STATUS and not is_quota_exhausted(e) and attempt < len(RETRY_DELAYS_S):
                 delay = RETRY_DELAYS_S[attempt]
                 attempt += 1
                 logger.warning(f"{model} returned {status}; retry {attempt}/{len(RETRY_DELAYS_S)} in {delay:.0f}s")
                 _sleep(delay)
                 continue
             raise LLMError(f"{model} call failed: {e}") from e
-    text = (response.text or "").strip()
-    if not text:
-        raise LLMError(f"{model} returned an empty response")
-    return text
+    return response
 
 # Sentinel: use settings.GEMINI_THINKING_LEVEL
 DEFAULT_THINKING = object()
@@ -111,6 +123,7 @@ def generate_json(
     system: Optional[str] = None,
     temperature: Optional[float] = 0.0,
     thinking_level: Any = DEFAULT_THINKING,
+    model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Returns the model's answer parsed as JSON.
@@ -123,7 +136,7 @@ def generate_json(
     if schema is not None:
         config["response_json_schema"] = schema.model_json_schema() if is_model else schema
 
-    text = _generate(prompt, config)
+    text = _generate(prompt, config, model)
     try:
         data = json.loads(text)
     except json.JSONDecodeError as e:
@@ -151,3 +164,62 @@ def generate_from_audio(audio_path: str, prompt: str) -> str:
             client.files.delete(name=uploaded.name)
         except Exception as e:
             logger.warning(f"Failed to delete uploaded audio file from Gemini: {e}")
+
+
+def parse_json_text(text: str) -> Any:
+    """
+    Parses JSON from a model answer that may wrap it in ```json fences or add a sentence.
+    Used for grounded calls, where JSON mode is not combined with the search tool.
+    """
+    cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip(), flags=re.IGNORECASE)
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass
+    starts = [i for i in (cleaned.find("{"), cleaned.find("[")) if i != -1]
+    if not starts:
+        raise LLMError("No JSON found in the model answer")
+    start = min(starts)
+    end = max(cleaned.rfind("}"), cleaned.rfind("]"))
+    try:
+        return json.loads(cleaned[start:end + 1])
+    except json.JSONDecodeError as e:
+        raise LLMError(f"Invalid JSON in the model answer: {e}") from e
+
+
+def _grounding(response: Any) -> Dict[str, Any]:
+    """Source links and Google's required search-suggestions HTML from a grounded response."""
+    sources: List[Dict[str, str]] = []
+    entry_point = None
+    try:
+        metadata = response.candidates[0].grounding_metadata
+    except (AttributeError, IndexError, TypeError):
+        metadata = None
+    if metadata is not None:
+        seen = set()
+        for chunk in getattr(metadata, "grounding_chunks", None) or []:
+            web = getattr(chunk, "web", None)
+            uri = getattr(web, "uri", None) if web else None
+            if uri and uri not in seen:
+                seen.add(uri)
+                sources.append({"title": getattr(web, "title", None) or getattr(web, "domain", None) or uri, "uri": uri})
+        sep = getattr(metadata, "search_entry_point", None)
+        entry_point = getattr(sep, "rendered_content", None) if sep else None
+    return {"sources": sources, "search_entry_point": entry_point}
+
+
+def generate_grounded_json(
+    prompt: str,
+    *,
+    model: Optional[str] = None,
+    thinking_level: Any = DEFAULT_THINKING,
+) -> Tuple[Any, Dict[str, Any]]:
+    """
+    Answers the prompt with Google Search grounding and parses the JSON in the answer.
+    Returns (data, {"sources": [{"title", "uri"}], "search_entry_point": html or None}).
+    """
+    config = _base_config(None, None, thinking_level)
+    config["tools"] = [{"google_search": {}}]
+    model = model or model_name()
+    response = _call(prompt, config, model)
+    return parse_json_text(_response_text(response, model)), _grounding(response)

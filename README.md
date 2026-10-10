@@ -27,7 +27,9 @@ VBCUA is an AI-powered web application designed to evaluate how effectively user
 
 3. **Web app** (React + TypeScript + Vite, served by the backend)
    - Glassmorphism design in light and dark, following the system setting unless you pick one.
-   - Three steps: choose a concept (searchable, or **Surprise me** for a random one), record in the browser with a live waveform or upload a file, review the results. The selected concept and the open attempt are kept in the URL, so a page reload keeps them.
+   - **Trending today**: topics in today's news (any area, not only tech) found by Gemini with Google Search grounding, cached once per day, with source links and Google's search suggestions. If grounding is unavailable (no key or quota), a curated list is shown as "Suggested topics".
+   - **Any topic**: type anything; Gemini writes a reference definition and key terms, saved as a concept marked *AI-generated reference* (practice only: research analysis uses the curated library concepts, see the `source` column).
+   - Three steps: choose a topic (searchable, or **Surprise me** for a random one), record in the browser with a live waveform or upload a file, review the results. The selected concept and the open attempt are kept in the URL, so a page reload keeps them.
    - Scores appear as soon as the analysis finishes; AI feedback follows a few seconds later ("Writing feedback…").
    - Results: overall, understanding and fluency score rings with short explanations, and tabs for feedback, keywords, transcript and every stored sub-score.
    - History; selecting an attempt opens it instantly.
@@ -107,6 +109,9 @@ GEMINI_MODEL=gemini-3.8-flash
 # Gemini model for written feedback (faster; GEMINI_MODEL is used for rubric grading)
 GEMINI_FEEDBACK_MODEL=gemini-3.5-flash-lite
 
+# Gemini model for trending topics and AI-written references (uses Google Search grounding)
+GEMINI_DISCOVER_MODEL=gemini-3.5-flash-lite
+
 # Gemini thinking effort for feedback (minimal, low, medium, high; empty = model default)
 GEMINI_THINKING_LEVEL=low
 
@@ -161,7 +166,9 @@ To work on the web app with hot reload, run the backend (`python run.py`) and, i
 | GET | `/api/health` | Health check |
 | POST | `/api/concepts` | Create a concept |
 | GET | `/api/concepts` | List concepts |
+| POST | `/api/concepts/generate` | Create a concept for any topic with an AI-written reference |
 | GET | `/api/concepts/{concept_id}` | Get one concept |
+| GET | `/api/discover/trending` | Today's trending topics (Google Search via Gemini, cached daily) or curated topics |
 | POST | `/api/evaluate` | Upload audio and run the evaluation pipeline |
 | GET | `/api/evaluations` | List past attempts |
 | GET | `/api/evaluations/{eval_id}` | Get one attempt |

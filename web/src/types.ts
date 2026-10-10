@@ -3,7 +3,25 @@ export interface Concept {
   title: string
   description: string
   keywords: string[]
+  /** "library" (curated), "custom" (added by a user) or "ai-generated"; null for older rows */
+  source?: 'library' | 'custom' | 'ai-generated' | null
   created_at?: string
+}
+
+export interface TrendingTopic {
+  title: string
+  category: string
+  why: string
+}
+
+export interface TrendingResponse {
+  date: string
+  /** "google-search" = live trending topics; "curated" = fallback list, never shown as trending */
+  origin: 'google-search' | 'curated'
+  topics: TrendingTopic[]
+  sources: Array<{ title: string; uri: string }>
+  /** Google's search-suggestions HTML, which must be displayed with grounded results */
+  search_entry_point: string | null
 }
 
 export type FeedbackStatus = 'pending' | 'generating' | 'done' | 'failed' | 'unavailable'

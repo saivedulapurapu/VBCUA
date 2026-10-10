@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     # Gemini model for written feedback (GEMINI_MODEL stays for the rubric grader)
     GEMINI_FEEDBACK_MODEL: str = Field(default="gemini-3.5-flash-lite", validation_alias="GEMINI_FEEDBACK_MODEL")
 
+    # Gemini model for "Trending today" topics and AI-written references (uses Google Search grounding)
+    GEMINI_DISCOVER_MODEL: str = Field(default="gemini-3.5-flash-lite", validation_alias="GEMINI_DISCOVER_MODEL")
+
     # Gemini thinking effort: minimal, low, medium or high ("" = model default).
     # Low keeps feedback fast; it does not affect any score.
     GEMINI_THINKING_LEVEL: str = Field(default="low", validation_alias="GEMINI_THINKING_LEVEL")
