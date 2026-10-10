@@ -33,7 +33,7 @@ def env(monkeypatch):
         state["loaded"].append(model_name)
         return state["whisper"]
 
-    def fake_gemini(audio_path, api_key):
+    def fake_gemini(audio_path):
         state["gemini_calls"] += 1
         return "gemini text"
 
@@ -42,6 +42,7 @@ def env(monkeypatch):
     monkeypatch.setattr(settings, "WHISPER_MODEL", "small")
     monkeypatch.setattr(settings, "GEMINI_API_KEY", "fake-key")
     monkeypatch.setattr(settings, "STT_GEMINI_FALLBACK", False)
+    monkeypatch.setattr(settings, "GEMINI_MODEL", "gemini-test-model")
     return state
 
 
@@ -84,7 +85,7 @@ def test_whisper_failure_uses_gemini_when_fallback_on(env, audio_file, monkeypat
     monkeypatch.setattr(settings, "STT_GEMINI_FALLBACK", True)
     env["whisper"] = StubWhisper(fail=True)
     result = stt.transcribe_audio(audio_file)
-    assert result == {"text": "gemini text", "asr_model": stt.GEMINI_STT_MODEL, "asr_confidence": None}
+    assert result == {"text": "gemini text", "asr_model": "gemini-test-model", "asr_confidence": None}
 
 
 def test_missing_file_raises():

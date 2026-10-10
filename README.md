@@ -44,6 +44,7 @@ VBCUA/
 │   │   └── services/          # AI & DSP Pipeline
 │   │       ├── audio_analysis.py   # Librosa signal processing & filler word counts
 │   │       ├── evaluation.py       # Fluency calculations & AI tutor feedback
+│   │       ├── llm_client.py       # Single Gemini (google-genai) client for all LLM calls
 │   │       ├── pdf_report.py       # ReportLab PDF generator
 │   │       ├── semantic.py         # Sentence-BERT similarity & keyword check
 │   │       └── speech_to_text.py   # Whisper & Gemini transcription managers
@@ -87,6 +88,9 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/vbcua_db
 # Google Gemini API Key (Required for advanced AI feedback summaries)
 GEMINI_API_KEY=gemini_api_key_here
 
+# Gemini model for all LLM calls (see https://ai.google.dev/gemini-api/docs/models)
+GEMINI_MODEL=gemini-3.8-flash
+
 # Whisper model size (tiny, base, small, medium, large)
 WHISPER_MODEL=small
 
@@ -128,7 +132,8 @@ python run.py
 
 - **Frameworks**: FastAPI (Backend) & Streamlit (Frontend)
 - **Database**: PostgreSQL (Production) / SQLite (Fallback) via SQLAlchemy ORM
-- **Speech processing**: OpenAI Whisper & Google Gemini
+- **Speech processing**: OpenAI Whisper (optional Google Gemini fallback)
+- **AI feedback**: Google Gemini via the `google-genai` SDK, with a rule-based fallback
 - **NLP / Semantics**: Sentence-Transformers (`all-MiniLM-L6-v2`)
 - **Audio DSP**: Librosa & NumPy
 - **Report Generation**: ReportLab PDF library

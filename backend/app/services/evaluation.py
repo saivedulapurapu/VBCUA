@@ -1,6 +1,6 @@
 import logging
 from typing import Dict, Any, List
-from backend.app.config import settings
+from backend.app.services import llm_client
 
 logger = logging.getLogger(__name__)
 
@@ -106,17 +106,11 @@ def generate_ai_feedback(
     reference_description: str,
     user_transcript: str,
     semantic_result: Dict[str, Any],
-    fluency_result: Dict[str, Any],
-    api_key: str
+    fluency_result: Dict[str, Any]
 ) -> str:
     """
-    Generates rich, customized feedback using Google Gemini API.
+    Generates rich, customized feedback using the configured LLM (see llm_client).
     """
-    import google.generativeai as genai
-    
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-1.5-flash")
-    
     mentioned = ", ".join(semantic_result["mentioned_keywords"])
     missing = ", ".join(semantic_result["missing_keywords"])
     observations = "; ".join(fluency_result["observations"])
@@ -149,8 +143,7 @@ def generate_ai_feedback(
     Keep the tone professional, encouraging, and constructive. Return ONLY the markdown formatted response.
     """
     
-    response = model.generate_content(prompt)
-    return response.text.strip()
+    return llm_client.generate_text(prompt)
 
 def evaluate_explanation(
     concept_title: str,
@@ -178,20 +171,19 @@ def evaluate_explanation(
     else:
         grade = "Poor Understanding"
 
-    # Generate feedback (Gemini with rule-based fallback)
+    # Generate feedback (LLM with rule-based fallback)
     feedback = ""
-    if settings.GEMINI_API_KEY:
+    if llm_client.is_configured():
         try:
             feedback = generate_ai_feedback(
                 concept_title=concept_title,
                 reference_description=reference_description,
                 user_transcript=user_transcript,
                 semantic_result=semantic_result,
-                fluency_result=fluency_result,
-                api_key=settings.GEMINI_API_KEY
+                fluency_result=fluency_result
             )
         except Exception as e:
-            logger.error(f"Gemini feedback generation failed, using rule-based generator: {e}")
+            logger.error(f"LLM feedback generation failed, using rule-based generator: {e}")
             feedback = generate_rule_based_feedback(concept_title, semantic_result, fluency_result)
     else:
         feedback = generate_rule_based_feedback(concept_title, semantic_result, fluency_result)

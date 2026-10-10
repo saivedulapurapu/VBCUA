@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     
     # Gemini API Key (optional but recommended for AI features)
     GEMINI_API_KEY: str = Field(default="", validation_alias="GEMINI_API_KEY")
+
+    # Gemini model used for all LLM calls (pinned for reproducible results)
+    GEMINI_MODEL: str = Field(default="gemini-3.8-flash", validation_alias="GEMINI_MODEL")
     
     # Whisper Speech-to-Text Model Size
     WHISPER_MODEL: str = Field(default="small", validation_alias="WHISPER_MODEL")

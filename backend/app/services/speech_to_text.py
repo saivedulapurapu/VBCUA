@@ -2,10 +2,9 @@ import os
 import logging
 from typing import Any, Dict, List, Optional
 from backend.app.config import settings
+from backend.app.services import llm_client
 
 logger = logging.getLogger(__name__)
-
-GEMINI_STT_MODEL = "gemini-1.5-flash"
 
 # Lazy load whisper to avoid slow startup times; one cached model per size
 _whisper_models: Dict[str, Any] = {}
@@ -41,31 +40,13 @@ def transcribe_audio_whisper(audio_path: str, model_name: Optional[str] = None) 
         "asr_confidence": mean_avg_logprob(result.get("segments", [])),
     }
 
-def transcribe_audio_gemini(audio_path: str, api_key: str) -> str:
+def transcribe_audio_gemini(audio_path: str) -> str:
     """
-    Transcribes audio using the Google Gemini API.
+    Transcribes audio with the configured LLM (see llm_client).
     """
-    import google.generativeai as genai
-
-    logger.info("Transcribing audio using Google Gemini API...")
-    genai.configure(api_key=api_key)
-
-    # Upload file to Gemini API
-    audio_file = genai.upload_file(path=audio_path)
-
-    # Generate content using the file reference
-    model = genai.GenerativeModel(GEMINI_STT_MODEL)
+    logger.info(f"Transcribing audio using {llm_client.model_name()}...")
     prompt = "Please transcribe this audio recording exactly. Provide only the plain transcription text without any commentary or headers."
-
-    response = model.generate_content([audio_file, prompt])
-
-    # Clean up the file on the Gemini server
-    try:
-        audio_file.delete()
-    except Exception as e:
-        logger.warning(f"Failed to delete uploaded audio file from Gemini: {e}")
-
-    return response.text.strip()
+    return llm_client.generate_from_audio(audio_path, prompt)
 
 def transcribe_audio(audio_path: str) -> Dict[str, Any]:
     """
@@ -84,11 +65,11 @@ def transcribe_audio(audio_path: str) -> Dict[str, Any]:
         logger.error(f"Local Whisper transcription failed: {e}")
         whisper_error = e
 
-    if settings.STT_GEMINI_FALLBACK and settings.GEMINI_API_KEY:
+    if settings.STT_GEMINI_FALLBACK and llm_client.is_configured():
         try:
-            text = transcribe_audio_gemini(audio_path, settings.GEMINI_API_KEY)
-            logger.info(f"Transcribed with {GEMINI_STT_MODEL} (fallback)")
-            return {"text": text, "asr_model": GEMINI_STT_MODEL, "asr_confidence": None}
+            text = transcribe_audio_gemini(audio_path)
+            logger.info(f"Transcribed with {llm_client.model_name()} (fallback)")
+            return {"text": text, "asr_model": llm_client.model_name(), "asr_confidence": None}
         except Exception as e:
             logger.error(f"Gemini fallback transcription failed: {e}")
 
