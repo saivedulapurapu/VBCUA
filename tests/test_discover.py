@@ -65,7 +65,24 @@ def test_curated_topics_without_key(db, gemini):
     assert result["origin"] == "curated"
     assert len(result["topics"]) == discover.TOPIC_COUNT
     assert gemini["calls"] == []
-    assert discover.get_trending(db, DAY)["topics"] == result["topics"]  # stable for the day
+
+
+def test_curated_topics_change_on_each_request_and_cover_categories():
+    import random
+    first = discover.curated_topics(rng=random.Random(1))
+    second = discover.curated_topics(rng=random.Random(2))
+    assert first != second
+    for picks in (first, second):
+        assert len(picks) == discover.TOPIC_COUNT
+        assert len({t["title"] for t in picks}) == discover.TOPIC_COUNT  # no duplicates
+        assert len({t["category"] for t in picks}) == len(discover.CATEGORIES)  # one per category
+        assert all(t["why"] == "" for t in picks)
+
+
+def test_curated_pool_is_large_and_valid():
+    assert len(discover.CURATED_TOPICS) >= 60
+    assert len({t["title"] for t in discover.CURATED_TOPICS}) == len(discover.CURATED_TOPICS)
+    assert {t["category"] for t in discover.CURATED_TOPICS} == set(discover.CATEGORIES)
 
 
 def test_grounded_topics_are_cleaned_and_cached(db, gemini):
@@ -153,8 +170,10 @@ def client(db):
 
 def test_trending_endpoint(client, gemini):
     gemini["configured"] = False
-    body = client.get("/api/discover/trending").json()
+    response = client.get("/api/discover/trending")
+    body = response.json()
     assert body["origin"] == "curated" and len(body["topics"]) == discover.TOPIC_COUNT
+    assert response.headers["cache-control"] == "no-store"
 
 
 def test_generate_endpoint_success(client, gemini):

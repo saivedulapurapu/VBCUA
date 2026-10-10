@@ -5,7 +5,7 @@ import time
 import uuid
 import logging
 from pathlib import Path
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from datetime import datetime, timedelta
@@ -210,8 +210,10 @@ def get_concept(concept_id: int, db: Session = Depends(get_db)):
 # Discovery: trending topics and AI-written references for any topic
 
 @app.get("/api/discover/trending", response_model=TrendingResponse)
-def trending_topics(db: Session = Depends(get_db)):
+def trending_topics(response: Response, db: Session = Depends(get_db)):
     """Today's trending topics (Gemini + Google Search, cached daily), or curated topics as a fallback."""
+    # Never cached by the browser: curated topics change on every request
+    response.headers["Cache-Control"] = "no-store"
     return discover.get_trending(db)
 
 

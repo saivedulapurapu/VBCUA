@@ -24,32 +24,73 @@ TOPIC_COUNT = 8
 # After a failed grounded search, wait before trying again (the curated list is shown meanwhile)
 RETRY_AFTER_FAILURE_S = 30 * 60
 
-# Shown when trending topics are unavailable (no key, quota, outage). Never labelled "trending".
+# Shown when trending topics are unavailable (no key, quota, outage): a new random set on every
+# request. Never labelled "trending".
 CURATED_TOPICS: List[Dict[str, str]] = [
-    {"title": "Climate change and global warming", "category": "Environment"},
-    {"title": "How vaccines train the immune system", "category": "Health"},
-    {"title": "Inflation and interest rates", "category": "Business"},
-    {"title": "How large language models work", "category": "Technology"},
-    {"title": "Renewable energy: solar and wind power", "category": "Environment"},
-    {"title": "The James Webb Space Telescope", "category": "Science"},
-    {"title": "Cryptocurrency and blockchain", "category": "Technology"},
     {"title": "How elections work in a democracy", "category": "News"},
-    {"title": "The Olympic Games", "category": "Sports"},
-    {"title": "Electric vehicles and batteries", "category": "Technology"},
-    {"title": "Antibiotic resistance", "category": "Health"},
-    {"title": "Supply chains and global trade", "category": "Business"},
     {"title": "Artificial intelligence regulation", "category": "News"},
-    {"title": "Cybersecurity and phishing", "category": "Technology"},
+    {"title": "The role of the United Nations", "category": "News"},
+    {"title": "Freedom of the press", "category": "News"},
+    {"title": "Refugees and migration", "category": "News"},
+    {"title": "How a budget is passed by parliament", "category": "News"},
+    {"title": "Space missions to the Moon", "category": "News"},
+    {"title": "Cyber attacks on governments", "category": "News"},
+    {"title": "The James Webb Space Telescope", "category": "Science"},
     {"title": "Plate tectonics and earthquakes", "category": "Science"},
-    {"title": "The stock market", "category": "Business"},
-    {"title": "Mental health and sleep", "category": "Health"},
     {"title": "Quantum computing", "category": "Science"},
-    {"title": "Cricket World Cup", "category": "Sports"},
-    {"title": "Streaming and the film industry", "category": "Culture"},
-    {"title": "Water scarcity", "category": "Environment"},
-    {"title": "Startups and venture capital", "category": "Business"},
     {"title": "CRISPR gene editing", "category": "Science"},
+    {"title": "Black holes", "category": "Science"},
+    {"title": "How the human brain stores memories", "category": "Science"},
+    {"title": "The origin of the universe", "category": "Science"},
+    {"title": "Volcanoes and eruptions", "category": "Science"},
+    {"title": "How large language models work", "category": "Technology"},
+    {"title": "Cryptocurrency and blockchain", "category": "Technology"},
+    {"title": "Cybersecurity and phishing", "category": "Technology"},
+    {"title": "Electric vehicles and batteries", "category": "Technology"},
+    {"title": "5G mobile networks", "category": "Technology"},
+    {"title": "UPI and digital payments", "category": "Technology"},
+    {"title": "Self-driving cars", "category": "Technology"},
+    {"title": "How search engines rank pages", "category": "Technology"},
+    {"title": "Inflation and interest rates", "category": "Business"},
+    {"title": "Supply chains and global trade", "category": "Business"},
+    {"title": "The stock market", "category": "Business"},
+    {"title": "Startups and venture capital", "category": "Business"},
+    {"title": "How e-commerce delivers in a day", "category": "Business"},
+    {"title": "Gig economy and freelancing", "category": "Business"},
+    {"title": "Why oil prices change", "category": "Business"},
+    {"title": "Brand marketing on social media", "category": "Business"},
+    {"title": "The Olympic Games", "category": "Sports"},
+    {"title": "Cricket World Cup", "category": "Sports"},
+    {"title": "T20 cricket and the IPL", "category": "Sports"},
+    {"title": "Football World Cup", "category": "Sports"},
+    {"title": "Sports science and athlete training", "category": "Sports"},
+    {"title": "Doping in sport", "category": "Sports"},
+    {"title": "Chess and computer engines", "category": "Sports"},
+    {"title": "The economics of sports leagues", "category": "Sports"},
+    {"title": "Streaming and the film industry", "category": "Culture"},
     {"title": "Social media and misinformation", "category": "Culture"},
+    {"title": "The rise of K-pop", "category": "Culture"},
+    {"title": "Indian classical dance", "category": "Culture"},
+    {"title": "Video games as an art form", "category": "Culture"},
+    {"title": "Museums in the digital age", "category": "Culture"},
+    {"title": "Festivals and their history", "category": "Culture"},
+    {"title": "How memes spread online", "category": "Culture"},
+    {"title": "How vaccines train the immune system", "category": "Health"},
+    {"title": "Antibiotic resistance", "category": "Health"},
+    {"title": "Mental health and sleep", "category": "Health"},
+    {"title": "Air pollution and health", "category": "Health"},
+    {"title": "Diabetes and lifestyle", "category": "Health"},
+    {"title": "How pandemics spread", "category": "Health"},
+    {"title": "Nutrition and balanced diets", "category": "Health"},
+    {"title": "Screen time and eyesight", "category": "Health"},
+    {"title": "Climate change and global warming", "category": "Environment"},
+    {"title": "Renewable energy: solar and wind power", "category": "Environment"},
+    {"title": "Water scarcity", "category": "Environment"},
+    {"title": "Plastic pollution in the oceans", "category": "Environment"},
+    {"title": "Deforestation and biodiversity", "category": "Environment"},
+    {"title": "Electric grids and energy storage", "category": "Environment"},
+    {"title": "Heatwaves and extreme weather", "category": "Environment"},
+    {"title": "Recycling and the circular economy", "category": "Environment"},
 ]
 
 _fetch_lock = threading.Lock()
@@ -60,10 +101,17 @@ def today() -> str:
     return Date.today().isoformat()
 
 
-def curated_topics(day: str, count: int = TOPIC_COUNT) -> List[Dict[str, str]]:
-    """A stable selection for the day, so the list does not change on every visit."""
-    rng = random.Random(day)
-    picks = rng.sample(CURATED_TOPICS, k=min(count, len(CURATED_TOPICS)))
+def curated_topics(count: int = TOPIC_COUNT, rng: Optional[random.Random] = None) -> List[Dict[str, str]]:
+    """A fresh random selection on every request, spread across categories where possible."""
+    rng = rng or random.Random()
+    by_category: Dict[str, List[Dict[str, str]]] = {}
+    for topic in CURATED_TOPICS:
+        by_category.setdefault(topic["category"], []).append(topic)
+    categories = list(by_category)
+    rng.shuffle(categories)
+    picks = [rng.choice(by_category[c]) for c in categories[:count]]
+    remaining = [t for t in CURATED_TOPICS if t not in picks]
+    picks += rng.sample(remaining, k=max(0, min(count - len(picks), len(remaining))))
     return [{"title": t["title"], "category": t["category"], "why": ""} for t in picks]
 
 
@@ -113,7 +161,7 @@ def _row_to_response(row: TrendingTopics) -> Dict[str, Any]:
 
 
 def _curated_response(day: str) -> Dict[str, Any]:
-    return {"date": day, "origin": "curated", "topics": curated_topics(day), "sources": [], "search_entry_point": None}
+    return {"date": day, "origin": "curated", "topics": curated_topics(), "sources": [], "search_entry_point": None}
 
 
 def get_trending(db: Session, day: Optional[str] = None) -> Dict[str, Any]:
