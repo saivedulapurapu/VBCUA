@@ -8,19 +8,20 @@ __pycache__/
 
 # Distribution / packaging
 .Python
-build/
-develop-eggs/
+# Anchored to the repo root so they never hide source folders such as web/src/lib
+/build/
+/develop-eggs/
 dist/
-downloads/
-eggs/
+/downloads/
+/eggs/
 .eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
+/lib/
+/lib64/
+/parts/
+/sdist/
+/var/
+/wheels/
+/share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
