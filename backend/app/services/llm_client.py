@@ -5,6 +5,7 @@ import the SDK directly, so the provider or model can be swapped in one place.
 """
 import json
 import logging
+import time
 from typing import Any, Dict, Optional, Type, Union
 
 from pydantic import BaseModel, ValidationError
@@ -35,19 +36,38 @@ def is_configured() -> bool:
 def model_name() -> str:
     return settings.GEMINI_MODEL
 
+# Temporary server-side errors ("high demand", rate limits) are retried with these delays
+RETRYABLE_STATUS = {429, 500, 503}
+RETRY_DELAYS_S = (2.0, 5.0)
+_sleep = time.sleep
+
+def _status_code(error: Exception) -> Optional[int]:
+    code = getattr(error, "code", None)
+    return code if isinstance(code, int) else None
+
 def _generate(contents: Any, config: Dict[str, Any]) -> str:
     if not is_configured():
         raise LLMNotConfigured("GEMINI_API_KEY is not set")
-    try:
-        response = _get_client().models.generate_content(
-            model=model_name(),
-            contents=contents,
-            config=config,
-        )
-    except LLMError:
-        raise
-    except Exception as e:
-        raise LLMError(f"{model_name()} call failed: {e}") from e
+    attempt = 0
+    while True:
+        try:
+            response = _get_client().models.generate_content(
+                model=model_name(),
+                contents=contents,
+                config=config,
+            )
+            break
+        except LLMError:
+            raise
+        except Exception as e:
+            status = _status_code(e)
+            if status in RETRYABLE_STATUS and attempt < len(RETRY_DELAYS_S):
+                delay = RETRY_DELAYS_S[attempt]
+                attempt += 1
+                logger.warning(f"{model_name()} returned {status}; retry {attempt}/{len(RETRY_DELAYS_S)} in {delay:.0f}s")
+                _sleep(delay)
+                continue
+            raise LLMError(f"{model_name()} call failed: {e}") from e
     text = (response.text or "").strip()
     if not text:
         raise LLMError(f"{model_name()} returned an empty response")

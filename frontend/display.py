@@ -110,3 +110,41 @@ def history_table_html(rows: List[Dict[str, Any]]) -> str:
         "<thead><tr style='border-bottom: 2px solid rgba(255,255,255,0.1); text-align: left;'>"
         f"{header}</tr></thead><tbody>{body}</tbody></table>"
     )
+
+
+# --- Session / navigation helpers ---
+
+def initial_concept_id(concepts: List[Dict[str, Any]], requested: Any) -> Any:
+    """Concept to preselect: the one named in the URL (?concept=<id>) if it exists, else the first."""
+    ids = [c["id"] for c in concepts]
+    try:
+        wanted = int(requested)
+    except (TypeError, ValueError):
+        wanted = None
+    if wanted in ids:
+        return wanted
+    return ids[0] if ids else None
+
+
+def history_rows(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Newest-first rows for the history table; values are plain text (no HTML)."""
+    rows = []
+    for item in sorted(items, key=lambda x: x["id"], reverse=True):
+        created = str(item.get("created_at", ""))[:16].replace("T", " ")
+        rows.append({
+            "id": item["id"],
+            "Date": created,
+            "Concept": concept_title(item),
+            "Overall": round(float(item["final_score"]), 1),
+            "Grade": str(item.get("understanding_grade", "")).replace(" Understanding", ""),
+            "Duration (s)": round(float(item.get("speech_duration") or 0.0), 1),
+        })
+    return rows
+
+
+def feedback_notice(eval_res: Dict[str, Any]) -> Any:
+    """Shown when the AI feedback was unavailable and the rule-based generator was used."""
+    if eval_res.get("feedback_source") == "rule-based":
+        return ("AI feedback was unavailable for this attempt (no API key, or the AI service was busy), "
+                "so this feedback was produced by the built-in rule-based generator.")
+    return None

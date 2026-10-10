@@ -1,21 +1,21 @@
 import os
-import requests
+import time
+from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import matplotlib.pyplot as plt
 import streamlit as st
 import plotly.graph_objects as go
-from datetime import datetime
 from dotenv import load_dotenv
+import api
+from api import BackendError
 from display import (
     FOUND, MISSING, PLAIN, concept_title as get_concept_title, description_html, esc,
-    fluency_text, history_table_html, keyword_badges, keyword_badges_html, transcript_html,
+    feedback_notice, fluency_text, history_rows, initial_concept_id, keyword_badges,
+    keyword_badges_html, transcript_html,
 )
 
 # Load local environment variables (for Gemini key check)
 load_dotenv()
-
-# API Configuration
-BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 
 st.set_page_config(
     page_title="VBCUA - Voice-Based Concept Understanding Analyser",
@@ -37,58 +37,67 @@ st.markdown("<div class='neon-title'>VBCUA Assessment Dashboard</div>", unsafe_a
 st.markdown("<div class='neon-subtitle'>AI-Powered Semantic & Speech Fluency Concept Evaluation</div>", unsafe_allow_html=True)
 
 # Helper Functions
-def get_all_concepts():
-    try:
-        response = requests.get(f"{BACKEND_URL}/api/concepts", timeout=5)
-        if response.status_code == 200:
-            return response.json()
-    except Exception:
-        pass
-    return []
+def show_error(error: BackendError):
+    """User-facing message, with the technical detail tucked into an expander."""
+    st.error(error.message)
+    if error.detail:
+        with st.expander("Technical details"):
+            st.code(error.detail, language=None)
 
-def create_new_concept(title, description, keywords):
-    try:
-        payload = {
-            "title": title,
-            "description": description,
-            "keywords": [kw.strip() for kw in keywords.split(",") if kw.strip()]
-        }
-        response = requests.post(f"{BACKEND_URL}/api/concepts", json=payload, timeout=5)
-        return response.status_code == 200
-    except Exception as e:
-        st.error(f"Error creating concept: {e}")
-        return False
+def show_evaluation(result):
+    """Display an attempt and remember it in the URL so a page reload keeps it."""
+    st.session_state.current_evaluation = result
+    st.query_params["attempt"] = str(result["id"])
 
-def run_evaluation(concept_id, audio_bytes, filename="audio.wav"):
-    try:
-        files = {"file": (filename, audio_bytes, "audio/wav")}
-        data = {"concept_id": concept_id}
-        response = requests.post(f"{BACKEND_URL}/api/evaluate", files=files, data=data, timeout=120)
-        if response.status_code == 200:
-            return response.json(), None
-        else:
-            return None, response.json().get("detail", "Evaluation failed")
-    except Exception as e:
-        return None, str(e)
+def run_evaluation_with_progress(concept, audio_bytes, filename):
+    """Runs the (slow) evaluation in a worker thread while showing elapsed time."""
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(api.evaluate, concept["id"], audio_bytes, filename)
+        with st.status(f"Analysing your explanation of {concept['title']}…", expanded=True) as status:
+            st.write("Transcribing speech, scoring understanding and fluency, and writing feedback. "
+                     "This usually takes 1–2 minutes for a one-minute recording.")
+            elapsed = st.empty()
+            start = time.time()
+            while not future.done():
+                elapsed.caption(f"Elapsed: {int(time.time() - start)} s")
+                time.sleep(1)
+            try:
+                result = future.result()
+            except BackendError as e:
+                status.update(label="Analysis failed", state="error", expanded=True)
+                show_error(e)
+                return None
+            status.update(label=f"Analysis complete ({int(time.time() - start)} s)", state="complete", expanded=False)
+            return result
 
-def get_evaluations_history():
+try:
+    concepts = api.get_concepts()
+    backend_error = None
+except BackendError as e:
+    concepts, backend_error = [], e
+
+# Restore the attempt shown before a page reload (?attempt=<id>)
+if "current_evaluation" not in st.session_state and st.query_params.get("attempt"):
     try:
-        response = requests.get(f"{BACKEND_URL}/api/evaluations", timeout=5)
-        if response.status_code == 200:
-            return response.json()
-    except Exception:
-        pass
-    return []
+        st.session_state.current_evaluation = api.get_evaluation(int(st.query_params["attempt"]))
+    except (BackendError, ValueError):
+        st.query_params.pop("attempt", None)
 
 # Sidebar configuration
 with st.sidebar:
     st.markdown("### 📚 Practice Concept")
     
-    concepts = get_all_concepts()
     if concepts:
-        concept_titles = [c["title"] for c in concepts]
-        selected_title = st.selectbox("Choose a concept to explain:", concept_titles)
-        selected_concept = next(c for c in concepts if c["title"] == selected_title)
+        by_id = {c["id"]: c for c in concepts}
+        # Keep the choice across reruns and page reloads (?concept=<id>)
+        if st.session_state.get("concept_id") not in by_id:
+            st.session_state.concept_id = initial_concept_id(concepts, st.query_params.get("concept"))
+        st.selectbox(
+            "Choose a concept to explain:", options=list(by_id),
+            format_func=lambda cid: by_id[cid]["title"], key="concept_id",
+        )
+        st.query_params["concept"] = str(st.session_state.concept_id)
+        selected_concept = by_id[st.session_state.concept_id]
         
         # Show Concept Details
         st.markdown("**📖 Description**")
@@ -98,7 +107,10 @@ with st.sidebar:
         st.markdown("**🔑 Required Keywords**")
         st.html(keyword_badges_html([(kw, PLAIN) for kw in selected_concept["keywords"]]))
     else:
-        st.info("Connecting to backend database... Please make sure backend is running.")
+        if backend_error:
+            show_error(backend_error)
+        else:
+            st.info("No concepts yet. Add one below.")
         selected_concept = None
 
     st.markdown("---")
@@ -125,11 +137,12 @@ with st.sidebar:
         new_kws = st.text_input("Keywords (comma separated)")
         if st.button("Submit Concept"):
             if new_title and new_desc and new_kws:
-                if create_new_concept(new_title, new_desc, new_kws):
-                    st.success("Concept created successfully!")
+                try:
+                    created = api.create_concept(new_title, new_desc, [kw.strip() for kw in new_kws.split(",") if kw.strip()])
+                    st.session_state.concept_id = created["id"]
                     st.rerun()
-                else:
-                    st.error("Failed to create concept.")
+                except BackendError as e:
+                    show_error(e)
             else:
                 st.warning("Please fill all fields.")
 
@@ -165,15 +178,12 @@ with col_left:
         st.markdown("---")
         
         if audio_data and selected_concept:
-            if st.button("🚀 Analyze Explanation"):
-                with st.spinner("Processing audio... Speech-to-text transcription, Librosa audio feature extraction, and Sentence-BERT semantic analysis are underway..."):
-                    result, err = run_evaluation(selected_concept["id"], audio_data, filename)
-                    if err:
-                        st.error(f"Analysis failed: {err}")
-                    else:
-                        st.session_state.current_evaluation = result
-                        st.success("Analysis complete!")
-                        st.rerun()
+            # The button names the concept so the explanation is never graded against the wrong one
+            if st.button(f"🚀 Analyze explanation of {selected_concept['title']}"):
+                result = run_evaluation_with_progress(selected_concept, audio_data, filename)
+                if result:
+                    show_evaluation(result)
+                    st.rerun()
         elif not selected_concept:
             st.warning("Please create or select a concept in the sidebar before evaluating.")
         else:
@@ -317,24 +327,22 @@ with col_right:
     
             # Educational AI Feedback Section
             st.markdown("#### 💡 AI Tutor Review & Recommendations")
+            notice = feedback_notice(eval_res)
+            if notice:
+                st.info(notice)
             st.markdown(eval_res["feedback"])
-            
+
             # Download PDF Report button
             st.markdown("---")
             try:
-                pdf_url = f"{BACKEND_URL}/api/evaluations/{eval_res['id']}/pdf"
-                pdf_response = requests.get(pdf_url, timeout=10)
-                if pdf_response.status_code == 200:
-                    st.download_button(
-                        label="📥 Download Detailed PDF Assessment Report",
-                        data=pdf_response.content,
-                        file_name=f"VBCUA_Report_{concept_title.replace(' ', '_')}_{eval_res['id']}.pdf",
-                        mime="application/pdf"
-                    )
-                else:
-                    st.error("Failed to prepare PDF download file.")
-            except Exception as e:
-                st.error(f"Error fetching report: {e}")
+                st.download_button(
+                    label="📥 Download Detailed PDF Assessment Report",
+                    data=api.get_pdf(eval_res["id"]),
+                    file_name=f"VBCUA_Report_{concept_title.replace(' ', '_')}_{eval_res['id']}.pdf",
+                    mime="application/pdf"
+                )
+            except BackendError as e:
+                show_error(e)
     else:
         with st.container(border=True):
             st.html("""
@@ -347,52 +355,28 @@ with col_right:
 # Evaluation History Timeline
 st.markdown("---")
 st.markdown("### 🕰️ Evaluation Performance History")
-history = get_evaluations_history()
+try:
+    history = api.get_evaluations()
+except BackendError as e:
+    history = []
+    show_error(e)
 
 if history:
-    history_data = []
-    for item in history:
-        concept_name = item["concept"]["title"] if item.get("concept") else f"Concept ID {item['concept_id']}"
-        created_time = datetime.fromisoformat(item["created_at"].replace("Z", "")).strftime("%b %d, %Y %H:%M")
-        
-        history_data.append({
-            "Date": created_time,
-            "Concept": concept_name,
-            "Score": f"{item['final_score']:.1f}%",
-            "Grade": item["understanding_grade"],
-            "Duration": f"{item['speech_duration']:.1f}s",
-            "Fillers": item["filler_words_count"],
-            "Action": item
-        })
-        
-    # Check if a specific attempt was requested via query parameter View click
-    query_params = st.query_params
-    if "load_attempt" in query_params:
-        try:
-            attempt_idx = int(query_params["load_attempt"])
-            if 0 <= attempt_idx < len(history_data):
-                st.session_state.current_evaluation = history_data[attempt_idx]["Action"]
-                st.query_params.clear()
-                st.rerun()
-        except Exception:
-            pass
-        
-    # Render custom timeline table (all values escaped)
-    st.html(history_table_html(history_data))
-    
-    # Inspection selection dropdown
-    st.write("")
-    col_sel, col_btn = st.columns([8, 2])
-    with col_sel:
-        selected_attempt_idx = st.selectbox(
-            "Select a past attempt to inspect:",
-            options=range(len(history_data)),
-            format_func=lambda idx: f"Attempt #{len(history_data)-idx}: {history_data[idx]['Concept']} - {history_data[idx]['Date']} (Score: {history_data[idx]['Score']})"
-        )
-    with col_btn:
-        st.write("<div style='height: 28px;'></div>", unsafe_allow_html=True) # spacing
-        if st.button("🔍 Load Attempt"):
-            st.session_state.current_evaluation = history_data[selected_attempt_idx]["Action"]
-            st.rerun()
+    rows = history_rows(history)
+    by_eval_id = {item["id"]: item for item in history}
+    st.caption("Select a row to open that attempt.")
+    event = st.dataframe(
+        [{k: v for k, v in row.items() if k != "id"} for row in rows],
+        hide_index=True, use_container_width=True,
+        on_select="rerun", selection_mode="single-row", key="history_table",
+    )
+    selected = event.selection.rows
+    selected_id = rows[selected[0]]["id"] if selected else None
+    # Load only when the selection changes, so a new analysis is not replaced by an old row
+    if selected_id is not None and selected_id != st.session_state.get("history_selected_id"):
+        st.session_state.history_selected_id = selected_id
+        show_evaluation(by_eval_id[selected_id])
+        st.rerun()
+    st.session_state.history_selected_id = selected_id
 else:
     st.info("No evaluations completed yet. Record or upload an audio file to view your performance history.")

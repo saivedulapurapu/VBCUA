@@ -114,3 +114,39 @@ def test_esc_escapes_quotes():
 def test_history_table_keeps_view_link():
     row = {"Date": "d", "Concept": "c", "Score": "1%", "Grade": "Strong Understanding", "Duration": "1s", "Fillers": 0}
     assert "href='/?load_attempt=0'" in history_table_html([row])
+
+
+# --- Navigation helpers ---
+
+from frontend.display import feedback_notice, history_rows, initial_concept_id  # noqa: E402
+
+CONCEPT_LIST = [{"id": 3}, {"id": 5}]
+
+
+@pytest.mark.parametrize("requested, expected", [("5", 5), (5, 5), ("9", 3), ("abc", 3), (None, 3)])
+def test_initial_concept_id(requested, expected):
+    assert initial_concept_id(CONCEPT_LIST, requested) == expected
+
+
+def test_initial_concept_id_empty():
+    assert initial_concept_id([], "1") is None
+
+
+def test_history_rows_newest_first_plain_text():
+    items = [
+        {"id": 1, "concept": CLOUD, "concept_id": 2, "final_score": 51.456, "understanding_grade": "Moderate Understanding",
+         "speech_duration": 79.98, "created_at": "2026-10-10T19:58:00.123"},
+        {"id": 2, "concept": {"title": "<b>X</b>"}, "concept_id": 9, "final_score": 76.9, "understanding_grade": "Strong Understanding",
+         "speech_duration": 81.9, "created_at": "2026-10-10T20:10:00"},
+    ]
+    rows = history_rows(items)
+    assert [r["id"] for r in rows] == [2, 1]
+    assert rows[1] == {"id": 1, "Date": "2026-10-10 19:58", "Concept": "Cloud Computing", "Overall": 51.5,
+                       "Grade": "Moderate", "Duration (s)": 80.0}
+    assert rows[0]["Concept"] == "<b>X</b>"  # shown as plain text by st.dataframe, never as HTML
+
+
+def test_feedback_notice_only_for_rule_based():
+    assert "rule-based" in feedback_notice({"feedback_source": "rule-based"})
+    assert feedback_notice({"feedback_source": "llm"}) is None
+    assert feedback_notice({}) is None  # older attempts

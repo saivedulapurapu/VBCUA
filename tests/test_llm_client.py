@@ -139,3 +139,67 @@ def test_audio_upload_deleted_after_failure(client):
     with pytest.raises(llm_client.LLMError):
         llm_client.generate_from_audio("clip.wav", "transcribe")
     assert fake.files.deleted == ["files/abc"]
+
+
+# --- Retries on temporary Gemini errors (real google-genai error classes) ---
+
+from google.genai import errors as genai_errors  # noqa: E402
+
+
+class FlakyModels:
+    """Raises the given errors in order, then returns text."""
+
+    def __init__(self, failures, text="recovered"):
+        self.failures = list(failures)
+        self.text = text
+        self.calls = 0
+
+    def generate_content(self, *, model, contents, config):
+        self.calls += 1
+        if self.failures:
+            raise self.failures.pop(0)
+        return SimpleNamespace(text=self.text)
+
+
+def server_error(code):
+    cls = genai_errors.ServerError if code >= 500 else genai_errors.ClientError
+    return cls(code, {"error": {"code": code, "message": "high demand", "status": "UNAVAILABLE"}})
+
+
+@pytest.fixture
+def flaky(monkeypatch):
+    sleeps = []
+    monkeypatch.setattr(llm_client, "_sleep", sleeps.append)
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "fake-key")
+
+    def install(failures):
+        models = FlakyModels(failures)
+        monkeypatch.setattr(llm_client, "_get_client", lambda: SimpleNamespace(models=models))
+        return models
+
+    install.sleeps = sleeps
+    return install
+
+
+@pytest.mark.parametrize("code", [503, 429, 500])
+def test_retries_temporary_errors_then_succeeds(flaky, code):
+    models = flaky([server_error(code), server_error(code)])
+    assert llm_client.generate_text("p") == "recovered"
+    assert models.calls == 3
+    assert flaky.sleeps == list(llm_client.RETRY_DELAYS_S)
+
+
+def test_gives_up_after_retries(flaky):
+    models = flaky([server_error(503)] * 5)
+    with pytest.raises(llm_client.LLMError):
+        llm_client.generate_text("p")
+    assert models.calls == 1 + len(llm_client.RETRY_DELAYS_S)
+
+
+@pytest.mark.parametrize("error", [server_error(400), server_error(403), RuntimeError("bug")])
+def test_does_not_retry_permanent_errors(flaky, error):
+    models = flaky([error])
+    with pytest.raises(llm_client.LLMError):
+        llm_client.generate_text("p")
+    assert models.calls == 1
+    assert flaky.sleeps == []
