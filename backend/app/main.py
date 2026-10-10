@@ -9,14 +9,6 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 from typing import List
 
-# Dynamic static-ffmpeg path registration for Windows platforms
-try:
-    import static_ffmpeg
-    static_ffmpeg.add_paths()
-except Exception as e:
-    import logging
-    logging.getLogger(__name__).warning(f"Could not initialize static-ffmpeg: {e}")
-
 # Database & Config
 from backend.app.config import settings
 from backend.app.database import engine, Base, get_db
@@ -52,29 +44,50 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Columns added after the first release; old rows get NULL (or the default given)
+ADDED_EVALUATION_COLUMNS = {
+    "final_score": "FLOAT DEFAULT 0.0",
+    "asr_model": "VARCHAR(50)",
+    "asr_confidence": "FLOAT",
+    "pause_ratio_v1": "FLOAT",
+    "cosine_similarity": "FLOAT",
+    "keyword_coverage": "FLOAT",
+    "mentioned_keywords": "JSON",
+    "missing_keywords": "JSON",
+    "understanding_score": "FLOAT",
+    "semantic_method": "VARCHAR(10)",
+    "fluency_score": "FLOAT",
+    "fluency_method": "VARCHAR(10)",
+    "feedback_source": "VARCHAR(20)",
+    "llm_model": "VARCHAR(50)",
+}
+
+def migrate_evaluations_table(session_factory):
+    """Dynamic database migration for existing tables (adds columns if missing)."""
+    for column, column_type in ADDED_EVALUATION_COLUMNS.items():
+        db = session_factory()
+        try:
+            # Check if column exists by querying it
+            db.execute(text(f"SELECT {column} FROM evaluations LIMIT 1"))
+        except Exception:
+            db.rollback()
+            logger.info(f"Database migration: {column} column missing. Appending it...")
+            try:
+                db.execute(text(f"ALTER TABLE evaluations ADD COLUMN {column} {column_type}"))
+                db.commit()
+                logger.info(f"Database migration: {column} column successfully added.")
+            except Exception as err:
+                logger.error(f"Failed to add {column} column: {err}")
+        finally:
+            db.close()
+
 # Database Startup Actions
 @app.on_event("startup")
 def startup_db_setup():
     logger.info("Initializing database and tables...")
     Base.metadata.create_all(bind=engine)
-    
-    # Dynamic database migration for existing tables (adds final_score if missing)
-    db = next(get_db())
-    try:
-        # Check if column exists by querying it
-        db.execute(text("SELECT final_score FROM evaluations LIMIT 1"))
-    except Exception:
-        db.rollback()
-        logger.info("Database migration: final_score column missing. Appending it...")
-        try:
-            db.execute(text("ALTER TABLE evaluations ADD COLUMN final_score FLOAT DEFAULT 0.0"))
-            db.commit()
-            logger.info("Database migration: final_score column successfully added.")
-        except Exception as err:
-            logger.error(f"Failed to add final_score column: {err}")
-    finally:
-        db.close()
-    
+    migrate_evaluations_table(lambda: next(get_db()))
+
     # Seed default concepts if table is empty
     db = next(get_db())
     try:
@@ -174,7 +187,8 @@ def evaluate_audio(
     # Evaluation Pipeline
     try:
         # Step A: Speech-to-Text Transcription
-        transcription = transcribe_audio(audio_path)
+        asr_result = transcribe_audio(audio_path)
+        transcription = asr_result["text"]
         if not transcription.strip():
             # If transcription is empty
             transcription = "[No speech detected or transcription failed]"
@@ -196,8 +210,7 @@ def evaluate_audio(
         # Step D: Fluency Analysis
         fluency_metrics = compute_fluency_score(
             filler_words_ratio=audio_metrics["filler_words_ratio"],
-            pause_ratio=audio_metrics["pause_ratio"],
-            rms_energy=audio_metrics["rms_energy"]
+            pause_ratio=audio_metrics["pause_ratio_v1"]
         )
         logger.info(f"Fluency score calculated: {fluency_metrics['fluency_score']}/100")
 
@@ -215,15 +228,28 @@ def evaluate_audio(
         db_evaluation = Evaluation(
             concept_id=concept_id,
             transcription=transcription,
+            asr_model=asr_result["asr_model"],
+            asr_confidence=asr_result["asr_confidence"],
             semantic_score=semantic_metrics["similarity_score"],
+            cosine_similarity=semantic_metrics["cosine_similarity"],
+            keyword_coverage=semantic_metrics["keyword_coverage"],
+            mentioned_keywords=semantic_metrics["mentioned_keywords"],
+            missing_keywords=semantic_metrics["missing_keywords"],
+            understanding_score=semantic_metrics["combined_score"],
+            semantic_method=semantic_metrics["scoring_method"],
+            fluency_score=fluency_metrics["fluency_score"],
+            fluency_method=fluency_metrics["scoring_method"],
             filler_words_count=audio_metrics["filler_words_count"],
             filler_words_ratio=audio_metrics["filler_words_ratio"],
             pause_ratio=audio_metrics["pause_ratio"],
+            pause_ratio_v1=audio_metrics["pause_ratio_v1"],
             rms_energy=audio_metrics["rms_energy"],
             speech_duration=audio_metrics["duration"],
             final_score=evaluation_result["final_score"],
             understanding_grade=evaluation_result["understanding_grade"],
             feedback=evaluation_result["feedback"],
+            feedback_source=evaluation_result["feedback_source"],
+            llm_model=evaluation_result["llm_model"],
             audio_path=audio_path
         )
         db.add(db_evaluation)

@@ -1,5 +1,4 @@
 import os
-import re
 import requests
 import numpy as np
 import matplotlib.pyplot as plt
@@ -7,6 +6,10 @@ import streamlit as st
 import plotly.graph_objects as go
 from datetime import datetime
 from dotenv import load_dotenv
+from display import (
+    FOUND, MISSING, PLAIN, concept_title as get_concept_title, description_html, esc,
+    fluency_text, history_table_html, keyword_badges, keyword_badges_html, transcript_html,
+)
 
 # Load local environment variables (for Gemini key check)
 load_dotenv()
@@ -89,14 +92,11 @@ with st.sidebar:
         
         # Show Concept Details
         st.markdown("**📖 Description**")
-        st.html(f"<p style='color: #94a3b8; font-size: 0.92rem; line-height: 1.6; margin-bottom: 20px;'>{selected_concept['description']}</p>")
-        
+        st.html(description_html(selected_concept["description"]))
+
         # Show Keywords
         st.markdown("**🔑 Required Keywords**")
-        kw_html = ""
-        for kw in selected_concept["keywords"]:
-            kw_html += f"<span class='badge badge-indigo'>{kw}</span>"
-        st.html(kw_html)
+        st.html(keyword_badges_html([(kw, PLAIN) for kw in selected_concept["keywords"]]))
     else:
         st.info("Connecting to backend database... Please make sure backend is running.")
         selected_concept = None
@@ -219,7 +219,7 @@ with col_left:
 with col_right:
     if "current_evaluation" in st.session_state:
         eval_res = st.session_state.current_evaluation
-        concept_title = eval_res["concept"]["title"] if eval_res.get("concept") else selected_title
+        concept_title = get_concept_title(eval_res)
         
         with st.container(border=True):
             st.markdown(f"### 📊 Analysis Results: **{concept_title}**")
@@ -231,7 +231,7 @@ with col_right:
                 <div class='metric-box purple'>
                     <div class='metric-label'>Overall Score</div>
                     <div class='metric-value purple'>{eval_res['final_score']:.1f}%</div>
-                    <div style='font-size:0.8rem; color:#bd00ff;'>{eval_res['understanding_grade']}</div>
+                    <div style='font-size:0.8rem; color:#bd00ff;'>{esc(eval_res['understanding_grade'])}</div>
                 </div>
                 """)
                 
@@ -245,16 +245,24 @@ with col_right:
                 """)
                 
             with kpi_col3:
-                # Simple fluency display
-                fluency_display = 100.0 - (eval_res["filler_words_ratio"] * 4.0)
-                fluency_display = max(10.0, min(100.0, fluency_display))
+                # Stored backend fluency score (never recomputed here)
+                fluency_display = fluency_text(eval_res)
+                pause_display = eval_res.get("pause_ratio_v1")
+                if pause_display is None:
+                    pause_display = eval_res["pause_ratio"]
                 st.html(f"""
                 <div class='glass-card' style='padding:15px !important; margin:0 !important; border-color: rgba(0, 255, 102, 0.2) !important; text-align:center;'>
                     <div class='metric-label'>Speech Fluency</div>
-                    <div class='metric-value green'>{fluency_display:.0f}%</div>
-                    <div style='font-size:0.8rem; color:#00ff66;'>P: {eval_res['pause_ratio']*100:.0f}% | F: {eval_res['filler_words_count']}</div>
+                    <div class='metric-value green'>{esc(fluency_display)}</div>
+                    <div style='font-size:0.8rem; color:#00ff66;'>P: {pause_display*100:.0f}% | Fillers (exp.): {esc(eval_res['filler_words_count'])}</div>
                 </div>
                 """)
+            
+            st.caption("Filler counts are experimental — speech-to-text usually removes 'um/uh'. Not used in scoring.")
+            
+            # Microphone check (from raw RMS; not part of any score)
+            if eval_res.get("recording_warning"):
+                st.warning(eval_res["recording_warning"], icon="🎙️")
                 
             st.markdown("---")
             
@@ -293,28 +301,18 @@ with col_right:
     
             # Keyword Coverage Visualization
             st.markdown("#### 🔑 Core Keyword Coverage Check")
-            if selected_concept:
-                trans_clean = eval_res["transcription"].lower()
-                kws = selected_concept["keywords"]
-                
-                kw_elements = ""
-                for kw in kws:
-                    pattern = r'\b' + re.escape(kw.lower()) + r'\b'
-                    if re.search(pattern, trans_clean) or kw.lower() in trans_clean:
-                        kw_elements += f"<span class='badge badge-success'>✓ {kw}</span>"
-                    else:
-                        kw_elements += f"<span class='badge badge-danger'>✗ {kw}</span>"
-                st.html(kw_elements)
-                
+            # Stored matches for the evaluated attempt's concept (not the sidebar selection)
+            badges = keyword_badges(eval_res)
+            if badges:
+                st.html(keyword_badges_html(badges))
+            if badges and all(status not in (FOUND, MISSING) for _, status in badges):
+                st.caption("Keyword matches were not stored for this older attempt.")
+
             st.markdown("---")
     
             # Transcription Display
             st.markdown("#### 📝 Speech Transcription")
-            st.html(f"""
-            <div style='background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 15px; border-radius: 8px; font-style: italic; color: #a0aec0;'>
-                "{eval_res['transcription']}"
-            </div>
-            """)
+            st.html(transcript_html(eval_res["transcription"]))
             st.html("<br>")
     
             # Educational AI Feedback Section
@@ -357,20 +355,11 @@ if history:
         concept_name = item["concept"]["title"] if item.get("concept") else f"Concept ID {item['concept_id']}"
         created_time = datetime.fromisoformat(item["created_at"].replace("Z", "")).strftime("%b %d, %Y %H:%M")
         
-        # Map grades to colors
-        grade = item["understanding_grade"]
-        if "Strong" in grade:
-            grade_styled = f"<span style='color: #00ff66; font-weight: bold;'>{grade}</span>"
-        elif "Moderate" in grade:
-            grade_styled = f"<span style='color: #ffe600; font-weight: bold;'>{grade}</span>"
-        else:
-            grade_styled = f"<span style='color: #ff416c; font-weight: bold;'>{grade}</span>"
-            
         history_data.append({
             "Date": created_time,
             "Concept": concept_name,
             "Score": f"{item['final_score']:.1f}%",
-            "Grade": grade_styled,
+            "Grade": item["understanding_grade"],
             "Duration": f"{item['speech_duration']:.1f}s",
             "Fillers": item["filler_words_count"],
             "Action": item
@@ -388,38 +377,8 @@ if history:
         except Exception:
             pass
         
-    # Render custom timeline table
-    import textwrap
-    html_table = """
-    <table style='width:100%; border-collapse: collapse; margin-top:15px; color:#f1f3f9;'>
-        <thead>
-            <tr style='border-bottom: 2px solid rgba(255,255,255,0.1); text-align: left;'>
-                <th style='padding: 10px;'>Date</th>
-                <th style='padding: 10px;'>Concept</th>
-                <th style='padding: 10px;'>Overall Score</th>
-                <th style='padding: 10px;'>Grade</th>
-                <th style='padding: 10px;'>Duration</th>
-                <th style='padding: 10px;'>Filler Words</th>
-                <th style='padding: 10px;'>Inspect</th>
-            </tr>
-        </thead>
-        <tbody>
-    """
-    for i, row in enumerate(history_data):
-        border_style = "border-bottom: 1px solid rgba(255,255,255,0.05);"
-        html_table += f"""
-            <tr style='{border_style}'>
-                <td style='padding: 10px;'>{row['Date']}</td>
-                <td style='padding: 10px; font-weight: 600;'>{row['Concept']}</td>
-                <td style='padding: 10px;'>{row['Score']}</td>
-                <td style='padding: 10px;'>{row['Grade']}</td>
-                <td style='padding: 10px;'>{row['Duration']}</td>
-                <td style='padding: 10px;'>{row['Fillers']}</td>
-                <td style='padding: 10px;'><a href='/?load_attempt={i}' target='_self' style='color: #bd00ff; text-decoration: none; font-weight: bold;'>View</a></td>
-            </tr>
-        """
-    html_table += "</tbody></table>"
-    st.html(html_table)
+    # Render custom timeline table (all values escaped)
+    st.html(history_table_html(history_data))
     
     # Inspection selection dropdown
     st.write("")

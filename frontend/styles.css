@@ -180,6 +180,12 @@ h1, h2, h3, h4, h5, h6, .neon-title {
     border: 1px solid rgba(244, 63, 94, 0.2) !important;
 }
 
+.badge-muted {
+    background-color: rgba(148, 163, 184, 0.08) !important;
+    color: #94a3b8 !important;
+    border: 1px solid rgba(148, 163, 184, 0.2) !important;
+}
+
 /* Premium Button Styles */
 .stButton>button, .stDownloadButton>button {
     background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%) !important; /* Royal Indigo to Classic Cobalt */

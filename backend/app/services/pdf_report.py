@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime
 from typing import Any
 from reportlab.lib.pagesizes import letter
@@ -6,6 +7,10 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
+from xml.sax.saxutils import escape
+from backend.app.services.audio_analysis import recording_warning
+
+FILLER_NOTE = "Filler counts are experimental — speech-to-text usually removes 'um/uh'. Not used in scoring."
 
 def generate_pdf_report(evaluation: Any, concept_title: str, output_path: str) -> str:
     """
@@ -99,8 +104,8 @@ def generate_pdf_report(evaluation: Any, concept_title: str, output_path: str) -
     
     # Overview Table (Concept, Grade, Duration)
     overview_data = [
-        [Paragraph("<b>Concept Explained:</b>", body_style), Paragraph(concept_title, body_style)],
-        [Paragraph("<b>Understanding Grade:</b>", body_style), Paragraph(f"<b>{evaluation.understanding_grade}</b>", body_style)],
+        [Paragraph("<b>Concept Explained:</b>", body_style), Paragraph(escape(concept_title), body_style)],
+        [Paragraph("<b>Understanding Grade:</b>", body_style), Paragraph(f"<b>{escape(evaluation.understanding_grade)}</b>", body_style)],
         [Paragraph("<b>Speech Duration:</b>", body_style), Paragraph(f"{evaluation.speech_duration:.1f} seconds", body_style)]
     ]
     overview_table = Table(overview_data, colWidths=[2.0 * inch, 4.0 * inch])
@@ -115,6 +120,7 @@ def generate_pdf_report(evaluation: Any, concept_title: str, output_path: str) -
     
     # Metric KPI Cards Layout
     # Three columns: Overall Score, Semantic Score, Fluency Score
+    pause_ratio = evaluation.pause_ratio_v1 if evaluation.pause_ratio_v1 is not None else evaluation.pause_ratio
     kpi_data = [
         [
             Paragraph("Overall Score", card_label_style),
@@ -124,17 +130,17 @@ def generate_pdf_report(evaluation: Any, concept_title: str, output_path: str) -
         [
             Paragraph(f"{evaluation.final_score:.1f}%", card_val_style),
             Paragraph(f"{evaluation.semantic_score:.1f}%", card_val_style),
-            Paragraph(f"{100.0 - (evaluation.filler_words_ratio * 4.0):.1f}%", card_val_style) # Approximated fluency
+            # Stored fluency score; older attempts did not store it
+            Paragraph(f"{evaluation.fluency_score:.1f}%" if evaluation.fluency_score is not None else "n/a", card_val_style)
+        ],
+        [
+            Paragraph("", card_label_style),
+            Paragraph("", card_label_style),
+            Paragraph(f"P: {pause_ratio*100:.0f}% / Fillers (exp.): {evaluation.filler_words_count}", card_label_style)
         ]
     ]
-    
-    # Update fluency display logic based on evaluations
-    # Wait, the evaluation object itself has the metrics saved, so let's calculate the fluency score stored
-    # We will pass the exact values or retrieve them from evaluation
-    # Let's adjust fluency display to show the pause ratio and filler count:
-    kpi_data[1][2] = Paragraph(f"P: {evaluation.pause_ratio*100:.0f}% / F: {evaluation.filler_words_count}", card_val_style)
 
-    kpi_table = Table(kpi_data, colWidths=[2.1 * inch, 2.1 * inch, 2.1 * inch], rowHeights=[20, 35])
+    kpi_table = Table(kpi_data, colWidths=[2.1 * inch, 2.1 * inch, 2.1 * inch], rowHeights=[20, 35, 18])
     kpi_table.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#1a1c29')),
         ('ALIGN', (0,0), (-1,-1), 'CENTER'),
@@ -150,17 +156,16 @@ def generate_pdf_report(evaluation: Any, concept_title: str, output_path: str) -
     
     # Speech Transcription Section
     story.append(Paragraph("Spoken Transcription", section_heading))
-    story.append(Paragraph(f'"{evaluation.transcription}"', transcript_style))
+    story.append(Paragraph(f'"{escape(evaluation.transcription)}"', transcript_style))
     story.append(Spacer(1, 0.2 * inch))
 
     # Detailed Speech Metrics
     story.append(Paragraph("Fluency & Delivery Metrics", section_heading))
     metrics_data = [
         [Paragraph("<b>Metric</b>", body_style), Paragraph("<b>Value</b>", body_style), Paragraph("<b>Target</b>", body_style)],
-        [Paragraph("Filler Word Count", body_style), Paragraph(str(evaluation.filler_words_count), body_style), Paragraph("0 - 2 words", body_style)],
-        [Paragraph("Filler Words Ratio", body_style), Paragraph(f"{evaluation.filler_words_ratio:.1f} per 100 words", body_style), Paragraph("< 2.0 ratio", body_style)],
-        [Paragraph("Pause Ratio (Silence)", body_style), Paragraph(f"{evaluation.pause_ratio*100:.1f}%", body_style), Paragraph("10% - 25%", body_style)],
-        [Paragraph("Speaking Intensity (RMS)", body_style), Paragraph(f"{evaluation.rms_energy:.4f}", body_style), Paragraph("> 0.005", body_style)],
+        [Paragraph("Pause Ratio (between first and last speech)", body_style), Paragraph(f"{pause_ratio*100:.1f}%", body_style), Paragraph("10% - 25%", body_style)],
+        [Paragraph("Filler Word Count (experimental)", body_style), Paragraph(str(evaluation.filler_words_count), body_style), Paragraph("not scored", body_style)],
+        [Paragraph("Filler Words Ratio (experimental)", body_style), Paragraph(f"{evaluation.filler_words_ratio:.1f} per 100 words", body_style), Paragraph("not scored", body_style)],
     ]
     metrics_table = Table(metrics_data, colWidths=[2.2 * inch, 2.1 * inch, 2.1 * inch])
     metrics_table.setStyle(TableStyle([
@@ -171,6 +176,14 @@ def generate_pdf_report(evaluation: Any, concept_title: str, output_path: str) -
         ('TOPPADDING', (0,0), (-1,-1), 5),
     ]))
     story.append(metrics_table)
+    story.append(Spacer(1, 0.05 * inch))
+    story.append(Paragraph(FILLER_NOTE, ParagraphStyle('Note', parent=body_style, fontSize=8, textColor=colors.HexColor('#64748b'))))
+
+    # Microphone check (from raw RMS; not part of any score)
+    warning = recording_warning(evaluation.rms_energy)
+    if warning:
+        story.append(Spacer(1, 0.1 * inch))
+        story.append(Paragraph(f"<b>Note:</b> {warning}", ParagraphStyle('Warning', parent=body_style, textColor=colors.HexColor('#b45309'))))
     story.append(Spacer(1, 0.25 * inch))
 
     # Educational Assessment & AI Feedback
@@ -180,9 +193,12 @@ def generate_pdf_report(evaluation: Any, concept_title: str, output_path: str) -
     feedback_text = evaluation.feedback
     paragraphs = feedback_text.split('\n')
     for p in paragraphs:
-        p_clean = p.strip()
+        # Escape first so markup from the transcript or LLM is shown as text,
+        # then convert the Markdown bold the feedback generators produce
+        p_clean = escape(p.strip())
         if not p_clean:
             continue
+        p_clean = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', p_clean)
         
         # Simple Markdown parsing
         # Headers
@@ -195,9 +211,6 @@ def generate_pdf_report(evaluation: Any, concept_title: str, output_path: str) -
         elif p_clean.startswith('1. ') or p_clean.startswith('2. ') or p_clean.startswith('3. '):
             story.append(Paragraph(p_clean, ParagraphStyle('List', parent=body_style, leftIndent=10)))
         else:
-            # Handle inline bolding (rough regex replacement)
-            import re
-            p_clean = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', p_clean)
             story.append(Paragraph(p_clean, body_style))
             
     # Build Document

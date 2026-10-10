@@ -11,22 +11,27 @@ VBCUA is an AI-powered web application designed to evaluate how effectively user
 ## Key Features
 
 1. **Semantic Concept Evaluation**
-   - Transcribes audio explanations using **OpenAI Whisper** (local) with a fallback to **Google Gemini 1.5 Flash**.
-   - Compares the explanation to predefined reference definitions using **Sentence-BERT (S-BERT)** semantic embeddings.
-   - Evaluates keyword coverage against essential terms.
-   - Assigns qualitative grades: *Strong Understanding*, *Moderate Understanding*, or *Poor Understanding*.
+   - Transcribes audio explanations using local **OpenAI Whisper** (`small` by default). An optional **Google Gemini** fallback is used only if Whisper fails and `STT_GEMINI_FALLBACK=true`. The ASR model used is saved with every attempt.
+   - Compares the explanation to predefined reference definitions using **Sentence-BERT (S-BERT)** semantic embeddings (similarity = `max(0, cosine) × 100`).
+   - Checks keyword coverage with whole-word matching (case-insensitive; hyphen/space and simple plurals treated as equal; no substring matches).
+   - Understanding score = 70% similarity + 30% keyword coverage.
+   - Assigns qualitative grades: *Strong Understanding* (≥ 80), *Moderate Understanding* (≥ 50), or *Poor Understanding*. The cut-offs are not yet calibrated against human ratings.
 
 2. **Speech Fluency & Delivery Metrics**
-   - Analyzes filler word usage (`um`, `uh`, `like`, `ah`, `you know`, `basically`, `actually`).
-   - Extracts pause-to-speech ratio and silence thresholds using **Librosa** audio signal processing.
-   - Measures speaking volume intensity using Root Mean Square (RMS) energy.
-   - Computes a weighted overall score ($70\%$ semantic comprehension + $30\%$ speech fluency).
+   - Fluency score is based on the pause ratio, measured between the first and last detected speech using **Librosa**.
+   - Filler words (`um`, `uh`, `like`, `ah`, `you know`, `basically`, `actually`) are counted and stored but are **experimental and not scored**: speech-to-text usually removes "um/uh".
+   - RMS energy is stored as a raw value and used only to warn about a very quiet recording ("check your microphone"); it does not affect any score.
+   - Overall score = 70% understanding + 30% fluency.
+   - The original formulas remain available as baseline `B0` (`method="b0"`) for research comparisons.
+   - Every sub-score, the scoring methods, the ASR model and the feedback source (LLM or rule-based) are stored per attempt.
 
 3. **Interactive Reporting Dashboard**
    - Displays real-time dark-cyber style waveform visualization of user recordings.
    - Interactive gauge displays for scores and color-coded keyword badges.
    - Historical evaluation timeline.
    - Downloads styled assessment reports as **ReportLab PDFs**.
+
+There are no user accounts or login: all attempts are stored in one shared history. Login and registration appear in the June 2026 project documents as planned features; see [Scope and changes since June 2026](VBCUA_Documents/Scope_and_Changes.md).
 
 ---
 
@@ -44,17 +49,23 @@ VBCUA/
 │   │   └── services/          # AI & DSP Pipeline
 │   │       ├── audio_analysis.py   # Librosa signal processing & filler word counts
 │   │       ├── evaluation.py       # Fluency calculations & AI tutor feedback
+│   │       ├── llm_client.py       # Single Gemini (google-genai) client for all LLM calls
 │   │       ├── pdf_report.py       # ReportLab PDF generator
 │   │       ├── semantic.py         # Sentence-BERT similarity & keyword check
 │   │       └── speech_to_text.py   # Whisper & Gemini transcription managers
 │   └── requirements.txt       # Backend dependencies
 ├── frontend/
 │   ├── app.py                 # Streamlit frontend dashboard
+│   ├── display.py             # Display helpers (stored scores, HTML escaping)
 │   ├── requirements.txt       # Frontend dependencies
 │   └── styles.css             # Premium glassmorphism dark-cyber CSS styles
+├── tests/                     # pytest suite (models and APIs stubbed)
+├── research/data/             # Research data (git-ignored)
 ├── uploads/                   # Local store for audio uploads and generated PDFs
+├── VBCUA_Documents/           # June 2026 project documents and research plan
 ├── .env                       # Local environment configuration file (ignored)
 ├── .env.template              # Template for configuring env variables
+├── pytest.ini                 # pytest configuration
 ├── run.py                     # Orchestration script to run backend and frontend
 └── README.md                  # Project documentation
 ```
@@ -64,9 +75,9 @@ VBCUA/
 ## Installation & Setup
 
 ### Prerequisites
-- **Python 3.10+**
+- **Python 3.10–3.12** (tested with 3.11; PyTorch/Whisper are not tested on 3.13 here)
 - **FFmpeg**: Required by Librosa/Whisper. 
-  * *Windows*: On startup, the application attempts to automatically register local system paths using `static-ffmpeg`. If missing, install FFmpeg on your system and add it to your environment `PATH`.
+  * *Windows*: Install FFmpeg (e.g. `winget install --id Gyan.FFmpeg -e`) and make sure `ffmpeg -version` works in a new terminal.
 
 ### Step 1: Clone the Repository
 ```bash
@@ -81,14 +92,22 @@ cp .env.template .env
 ```
 Inside `.env`, configure your settings:
 ```ini
-# Database configuration (Defaults to PostgreSQL, falls back to SQLite vbcua.db)
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/vbcua_db
+# Database: SQLite (local vbcua.db file) by default
+DATABASE_URL=sqlite:///./vbcua.db
+# Optional PostgreSQL (uses the psycopg2 driver from requirements):
+# DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/vbcua_db
 
 # Google Gemini API Key (Required for advanced AI feedback summaries)
 GEMINI_API_KEY=gemini_api_key_here
 
+# Gemini model for all LLM calls (see https://ai.google.dev/gemini-api/docs/models)
+GEMINI_MODEL=gemini-3.8-flash
+
 # Whisper model size (tiny, base, small, medium, large)
-WHISPER_MODEL=base
+WHISPER_MODEL=small
+
+# Fall back to Gemini transcription if local Whisper fails
+STT_GEMINI_FALLBACK=false
 ```
 
 ### Step 3: Install Dependencies
@@ -109,7 +128,7 @@ pip install -r frontend/requirements.txt
 
 ## Running the Application
 
-VBCUA comes with an orchestrator script `run.py` that will verify your `.env` configuration, ensure your target database exists (with self-healing migrations), and start both services in parallel.
+VBCUA comes with an orchestrator script `run.py` that will verify your `.env` configuration, create the PostgreSQL database if a `postgresql` URL is configured (skipped for SQLite), and start both services in parallel. Missing columns are added to existing databases at backend startup.
 
 Run the launcher:
 ```bash
@@ -121,11 +140,40 @@ python run.py
 
 ---
 
+## API
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/` | Health check |
+| POST | `/api/concepts` | Create a concept |
+| GET | `/api/concepts` | List concepts |
+| GET | `/api/concepts/{concept_id}` | Get one concept |
+| POST | `/api/evaluate` | Upload audio and run the evaluation pipeline |
+| GET | `/api/evaluations` | List past attempts |
+| GET | `/api/evaluations/{eval_id}` | Get one attempt |
+| GET | `/api/evaluations/{eval_id}/pdf` | Download the PDF report for an attempt |
+
+Interactive documentation is served at `/docs` while the backend is running.
+
+---
+
+## Running Tests
+
+```bash
+pip install pytest
+python -m pytest
+```
+
+The tests stub Whisper, Sentence-BERT and Gemini, so they need no model downloads, API key or network access.
+
+---
+
 ## Pipeline & Tech Stack
 
 - **Frameworks**: FastAPI (Backend) & Streamlit (Frontend)
-- **Database**: PostgreSQL (Production) / SQLite (Fallback) via SQLAlchemy ORM
-- **Speech processing**: OpenAI Whisper & Google Gemini
+- **Database**: SQLite by default; PostgreSQL optional (`postgresql+psycopg2://` URL) via SQLAlchemy ORM
+- **Speech processing**: OpenAI Whisper (optional Google Gemini fallback)
+- **AI feedback**: Google Gemini via the `google-genai` SDK, with a rule-based fallback
 - **NLP / Semantics**: Sentence-Transformers (`all-MiniLM-L6-v2`)
 - **Audio DSP**: Librosa & NumPy
 - **Report Generation**: ReportLab PDF library

@@ -21,9 +21,9 @@ def check_env():
             logger.info(".env created from template. Please set GEMINI_API_KEY inside if desired.")
         else:
             with open(".env", "w") as f:
-                f.write("DATABASE_URL=postgresql://postgres:postgres@localhost:5432/vbcua_db\n")
+                f.write("DATABASE_URL=sqlite:///./vbcua.db\n")
                 f.write("GEMINI_API_KEY=\n")
-                f.write("WHISPER_MODEL=base\n")
+                f.write("WHISPER_MODEL=small\n")
                 f.write("UPLOAD_DIR=./uploads\n")
             logger.info("Created a basic .env file.")
     else:
@@ -31,13 +31,14 @@ def check_env():
 
 def setup_db():
     """
-    Tries to connect to PostgreSQL default db and create the target db if it does not exist.
+    For a PostgreSQL URL, creates the target db if it does not exist.
+    Skipped for SQLite (the default) and any other non-PostgreSQL URL.
     """
     load_dotenv()
-    db_url = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/vbcua_db")
-    
+    db_url = os.getenv("DATABASE_URL", "sqlite:///./vbcua.db")
+
     if not db_url.startswith("postgresql"):
-        logger.info("SQLite or other database detected. Table initialization will be handled by FastAPI.")
+        logger.info("Non-PostgreSQL database configured; skipping PostgreSQL setup. Tables are created by FastAPI.")
         return
         
     try:
