@@ -10,6 +10,7 @@ so a run can stop and resume, and the timing run's transcripts are reused.
 
     python -m research.asr.transcribe time            # 20 jobs through tiny, base and small; estimate
     python -m research.asr.transcribe run --models small base tiny
+    python -m research.asr.transcribe status          # transcripts done per model
 """
 import argparse
 import sys
@@ -71,6 +72,7 @@ def run_jobs(jobs: pd.DataFrame, models: Sequence[str], path: Path = TRANSCRIPTS
     rows = load_transcripts(path).to_dict("records")
     done = {(r["item_id"], r["voice"], r["condition"], r["model"]) for r in rows}
     new = []
+    run_started = time.perf_counter()
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         for model in models:
@@ -91,9 +93,28 @@ def run_jobs(jobs: pd.DataFrame, models: Sequence[str], path: Path = TRANSCRIPTS
                 done.add(key)
                 if len(new) % save_every == 0:
                     pd.DataFrame(rows, columns=COLUMNS).to_csv(path, index=False)
+                    _progress(rows, len(jobs), model, run_started)
     finally:
         pd.DataFrame(rows, columns=COLUMNS).to_csv(path, index=False)
     return pd.DataFrame(new, columns=COLUMNS)
+
+
+def _progress(rows: List[Dict], jobs_per_model: int, model: str, started: float) -> None:
+    done = sum(1 for r in rows if r["model"] == model)
+    print(f"{time.strftime('%H:%M:%S')} whisper-{model}: {done}/{jobs_per_model} "
+          f"({time.perf_counter() - started:.0f} s this run)", flush=True)
+
+
+def status(path: Path = TRANSCRIPTS, jobs_per_model: Optional[int] = None) -> str:
+    """One line per model: transcripts done / total, and the time spent so far."""
+    jobs_per_model = jobs_per_model or len(all_jobs())
+    t = load_transcripts(path)
+    lines = []
+    for model in MODELS:
+        m = t[t["model"] == model]
+        spent = pd.to_numeric(m["runtime_seconds"], errors="coerce").sum() / 60
+        lines.append(f"whisper-{model}: {len(m)}/{jobs_per_model} done, {spent:.0f} min of transcription so far")
+    return "\n".join(lines)
 
 
 def estimate(timed: pd.DataFrame, jobs: pd.DataFrame) -> pd.DataFrame:
@@ -116,7 +137,7 @@ def estimate(timed: pd.DataFrame, jobs: pd.DataFrame) -> pd.DataFrame:
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Whisper transcription for RQ2.")
-    parser.add_argument("command", choices=["time", "run"])
+    parser.add_argument("command", choices=["time", "run", "status"])
     parser.add_argument("--models", nargs="+", default=list(MODELS), choices=MODELS)
     args = parser.parse_args(argv)
     jobs = all_jobs()
@@ -141,7 +162,10 @@ def main(argv: Optional[List[str]] = None) -> int:
               f"({jobs['seconds'].astype(float).sum() / 60:.0f} min of audio per model)")
         print(table.to_string(index=False))
         table.to_csv(ASR_DIR / "timing.csv", index=False)
+    if args.command == "status":
+        print(status(jobs_per_model=len(jobs)))
     if args.command == "run":
+        print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} start: models {args.models}, {len(jobs)} jobs each", flush=True)
         new = run_jobs(jobs, args.models)
         print(f"Transcribed {len(new)} new jobs; {len(load_transcripts())} in {TRANSCRIPTS}")
     return 0

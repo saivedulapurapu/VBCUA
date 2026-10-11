@@ -59,3 +59,13 @@ def test_estimate_scales_by_jobs_and_audio():
     row = transcribe.estimate(timed, jobs).iloc[0]
     assert row["mean_s_per_job"] == 2.0 and row["est_minutes_by_jobs"] == 2.0
     assert row["est_minutes_by_audio"] == 2.0  # 0.2 s per audio second x 600 s
+
+
+def test_status_counts_per_model(tmp_path):
+    path = tmp_path / "t.csv"
+    pd.DataFrame([{"item_id": "a", "voice": "us", "condition": "clean", "model": "small", "text": "x",
+                   "asr_confidence": -0.1, "audio_seconds": 1.0, "runtime_seconds": 120.0}]).to_csv(path, index=False)
+    lines = transcribe.status(path, jobs_per_model=1800).splitlines()
+    assert lines == ["whisper-tiny: 0/1800 done, 0 min of transcription so far",
+                     "whisper-base: 0/1800 done, 0 min of transcription so far",
+                     "whisper-small: 1/1800 done, 2 min of transcription so far"]
