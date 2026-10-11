@@ -1,0 +1,6 @@
+pandas
+pyarrow
+scipy
+numpy
+# only for the QWK cross-check test
+scikit-learn

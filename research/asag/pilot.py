@@ -8,7 +8,9 @@ Stages (run in this order; each one reads what the previous one saved):
     plan     counts the LLM calls still needed (rubrics + grading). Makes no calls.
     rubrics  one rubric per sampled question, from the question + reference answer only.
     grade    rubric grading of every sampled answer.
-    report   cosine scores, cut-offs tuned on dev only, metrics on test only.
+    report   cosine scores (and rubric scores once graded), everything fitted on dev only,
+             metrics on test only. Datasets with numeric gold scores (Mohler) get Pearson,
+             Spearman and RMSE as primary metrics and a grader-1-vs-grader-2 ceiling.
 
 Examples:
     python -m research.asag.pilot split  --dataset engsaf --data research/data/engsaf
@@ -23,8 +25,8 @@ Examples:
 Outputs:
     research/results/<dataset>/split.csv          item IDs + split (no text, no labels)
     research/results/<dataset>/rubrics/<qid>.json rubrics (no question or reference text)
-    research/results/<dataset>/thresholds.json    dev-tuned cut-offs per method
-    research/results/<dataset>/test/              metrics.csv, metrics.md, confusion_*.csv
+    research/results/<dataset>/thresholds.json    dev-fitted cut-offs and linear maps per method
+    research/results/<dataset>/test/              metrics.md (the report), metrics.csv, primary_scores.csv, confusion_*.csv
     research/data/<dataset>/grades.csv            per-answer rubric grades (git-ignored)
     research/data/<dataset>/predictions.csv       per-answer scores and labels (git-ignored)
     research/data/llm_cache/                      every Gemini answer, keyed by (model, prompt hash)
@@ -35,7 +37,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -50,7 +52,7 @@ RESULTS_ROOT = ROOT / "research" / "results"
 CACHE_DIR = DATA_ROOT / "llm_cache"
 OFFLINE_MODEL = "offline-stand-in"
 
-# Methods compared on test. *_tuned use dev-tuned cut-offs; *_app use the app's fixed 50/80.
+# Label methods compared on test once rubric grades exist. *_tuned use dev-tuned cut-offs; *_app the app's fixed 50/80.
 METHODS = ["v1_cosine_tuned", "b0_cosine_tuned", "v1_cosine_app", "b0_cosine_app", "rubric_tuned"]
 
 
@@ -214,44 +216,130 @@ def cosine_scores(sample: pd.DataFrame, encode: Optional[Callable] = None) -> np
     return np.where(norms > 0, (a * r).sum(axis=1) / np.where(norms > 0, norms, 1), 0.0)
 
 
+def linear_map(dev_scores: Sequence[float], dev_gold: Sequence[float], low: float, high: float) -> Dict[str, float]:
+    """Least-squares line gold ~ slope * score + intercept, fitted on dev only; predictions are clipped to [low, high]."""
+    x = np.asarray(dev_scores, dtype=float)
+    if np.ptp(x) == 0:
+        return {"slope": 0.0, "intercept": float(np.mean(dev_gold)), "low": low, "high": high}
+    slope, intercept = np.polyfit(x, np.asarray(dev_gold, dtype=float), 1)
+    return {"slope": float(slope), "intercept": float(intercept), "low": low, "high": high}
+
+
+def apply_map(scores: Sequence[float], m: Dict[str, float]) -> np.ndarray:
+    return np.clip(np.asarray(scores, dtype=float) * m["slope"] + m["intercept"], m["low"], m["high"])
+
+
+def _available_methods(sample: pd.DataFrame, paths: Paths) -> List[str]:
+    """Cosine methods always; the rubric grader only once every sampled answer is graded."""
+    bases = ["v1", "b0"]
+    if paths.grades.exists():
+        grades = pd.read_csv(paths.grades, dtype={"item_id": str})
+        graded = set(grades["item_id"])
+        if set(sample["item_id"]) <= graded:
+            bases.append("rubric")
+        else:
+            print(f"Rubric grader left out: {len(set(sample['item_id']) - graded)} sampled answers not graded yet.")
+    else:
+        print("Rubric grader left out: no grades yet (run `grade`).")
+    return bases
+
+
 def stage_report(df: pd.DataFrame, paths: Paths, dataset: str, encode: Optional[Callable] = None) -> pd.DataFrame:
+    """
+    Writes the test-split report. Everything fitted (label cut-offs, the linear map to the
+    gold scale) uses dev only. Datasets with numeric gold scores get the continuous metrics
+    as primary; the three labels are then secondary. Returns the label-metrics table.
+    """
     from backend.app.services.semantic import similarity_from_cosine, similarity_from_cosine_b0
 
     sample = _sample(df, paths)
-    if not paths.grades.exists():
-        raise SystemExit("No grades yet: run the `grade` stage first.")
-    grades = pd.read_csv(paths.grades, dtype={"item_id": str})
-    sample = sample.merge(grades[["item_id", "rubric_score"]], on="item_id", how="left")
-    if sample["rubric_score"].isna().any():
-        raise SystemExit(f"{int(sample['rubric_score'].isna().sum())} sampled answers are not graded yet.")
+    bases = _available_methods(sample, paths)
+    if "rubric" in bases:
+        grades = pd.read_csv(paths.grades, dtype={"item_id": str})
+        sample = sample.merge(grades[["item_id", "rubric_score"]], on="item_id", how="left")
 
     cos = cosine_scores(sample, encode)
     sample["cosine"] = cos
     sample["v1_score"] = [similarity_from_cosine(c) for c in cos]
     sample["b0_score"] = [similarity_from_cosine_b0(c) for c in cos]
 
+    def tuned(base: str) -> str:
+        return "rubric_tuned" if base == "rubric" else f"{base}_cosine_tuned"
+
+    methods = [tuned(b) for b in bases if b != "rubric"] + [f"{b}_cosine_app" for b in ("v1", "b0")]
+    methods += [tuned("rubric")] if "rubric" in bases else []
+
     dev = sample[sample["split"] == "dev"]
-    cutoffs = {name: thresholds.tune(dev[f"{name}_score"], dev["label"]) for name in ("v1", "b0", "rubric")}
-    for name, c in cutoffs.items():
-        sample[f"{name}_cosine_tuned" if name != "rubric" else "rubric_tuned"] = thresholds.labels_for(sample[f"{name}_score"], (c["low"], c["high"]))
-    for name in ("v1", "b0"):
-        sample[f"{name}_cosine_app"] = thresholds.labels_for(sample[f"{name}_score"], thresholds.APP_CUTOFFS)
-    for method in METHODS:
-        base = method.split("_")[0]
-        sample[f"{method}_score"] = sample[f"{base}_score"]
+    cutoffs = {b: thresholds.tune(dev[f"{b}_score"], dev["label"]) for b in bases}
+    for b, c in cutoffs.items():
+        sample[tuned(b)] = thresholds.labels_for(sample[f"{b}_score"], (c["low"], c["high"]))
+    for b in ("v1", "b0"):
+        sample[f"{b}_cosine_app"] = thresholds.labels_for(sample[f"{b}_score"], thresholds.APP_CUTOFFS)
+    for method in methods:
+        sample[f"{method}_score"] = sample[f"{method.split('_')[0]}_score"]
+
+    continuous = "score" in sample.columns
+    maps = {}
+    if continuous:
+        if dataset not in datasets.SCORE_SCALES:
+            raise SystemExit(f"Add the gold score range for {dataset} to datasets.SCORE_SCALES")
+        low, high = datasets.SCORE_SCALES[dataset]
+        for b in bases:
+            maps[b] = linear_map(dev[f"{b}_score"], dev["score"], low, high)
+            sample[f"{b}_mapped"] = apply_map(sample[f"{b}_score"], maps[b])
 
     paths.thresholds.parent.mkdir(parents=True, exist_ok=True)
-    paths.thresholds.write_text(json.dumps(
-        {"tuned_on": "dev", "objective": "QWK (ties: accuracy)", "app_cutoffs": thresholds.APP_CUTOFFS, **cutoffs}, indent=2),
-        encoding="utf-8")
+    paths.thresholds.write_text(json.dumps({
+        "fitted_on": "dev",
+        "label_cutoffs": {"objective": "QWK (ties: accuracy)", "app_cutoffs": thresholds.APP_CUTOFFS, **cutoffs},
+        "linear_maps_to_gold_scale": maps or None,
+    }, indent=2), encoding="utf-8")
     paths.predictions.parent.mkdir(parents=True, exist_ok=True)
     sample.drop(columns=["question", "reference", "answer"]).to_csv(paths.predictions, index=False)
 
     test = sample[sample["split"] == "test"].rename(columns={"label": "human"})
-    title = f"{dataset}: agreement with human labels on the test split (n={len(test)})"
-    table = evaluate.write_report(test, METHODS, list(datasets.LABELS), paths.test, title)
-    print(evaluate.metrics_markdown(table, title))
-    print(f"Cut-offs (dev only): {paths.thresholds}")
+    has_graders = {"score_grader_1", "score_grader_2"} <= set(test.columns)
+    paths.test.mkdir(parents=True, exist_ok=True)
+    report = []
+
+    if continuous:
+        rows = [{"method": b, **evaluate.evaluate_continuous(test["score"], test[f"{b}_mapped"])} for b in bases]
+        if has_graders:
+            rows.append({"method": "human ceiling: grader 1 vs grader 2",
+                         **evaluate.evaluate_continuous(test["score_grader_1"], test["score_grader_2"])})
+        primary = pd.DataFrame(rows)
+        primary.to_csv(paths.test / "primary_scores.csv", index=False)
+        scale = f"{low:g}-{high:g}"
+        report.append(evaluate.continuous_markdown(
+            primary, f"{dataset}: primary — scores vs gold ({scale}) on the test split (n={len(test)})", scale))
+        report.append(
+            "Each method's raw score is mapped to the gold scale by a straight line fitted on dev only "
+            "(clipped to the scale). Pearson and Spearman do not depend on that map; RMSE does. "
+            "The ceiling row compares the two human graders with each other, not with their average.\n")
+
+    labels = list(datasets.LABELS)
+    table = evaluate.evaluate_frame(test, methods, labels)
+    if has_graders:
+        g1 = [datasets.mohler_label(s) for s in test["score_grader_1"]]
+        g2 = [datasets.mohler_label(s) for s in test["score_grader_2"]]
+        ceiling = evaluate.evaluate_method(g1, g2, labels, scores=test["score_grader_2"].tolist())
+        table = pd.concat([table, pd.DataFrame([{"method": "human ceiling: grader 1 vs grader 2",
+                                                 "spearman_on": "score_grader_2", **ceiling}])], ignore_index=True)
+    table.to_csv(paths.test / "metrics.csv", index=False)
+    kind = "secondary — three labels" if continuous else "agreement with human labels"
+    title = f"{dataset}: {kind} on the test split (n={len(test)})"
+    report.append(evaluate.metrics_markdown(table, title))
+    report.append(
+        "*_tuned: label cut-offs chosen on dev only (max QWK). *_app: the app's fixed cut-offs (50 / 80). "
+        "With tuned cut-offs v1 and B0 give the same labels, because both are increasing functions of the cosine.\n")
+    y_true = evaluate.to_ordinal(test["human"].tolist(), labels)
+    for method in methods:
+        matrix = evaluate.confusion(y_true, evaluate.to_ordinal(test[method].tolist(), labels), labels)
+        matrix.to_csv(paths.test / f"confusion_{method}.csv")
+        report.append(evaluate.confusion_markdown(matrix, method))
+    (paths.test / "metrics.md").write_text("\n".join(report), encoding="utf-8")
+    print("\n".join(report[:3] if continuous else report[:1]))
+    print(f"Report: {paths.test / 'metrics.md'}\nFitted on dev only: {paths.thresholds}")
     return table
 
 

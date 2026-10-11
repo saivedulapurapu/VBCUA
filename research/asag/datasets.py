@@ -8,9 +8,14 @@ Every loader returns a DataFrame with these columns (one row per student answer)
     reference    reference (instructor) answer
     answer       student answer
     label        "incorrect" / "partial" / "correct"
+and, for datasets with numeric grades (Mohler), optional float columns:
+    score            the gold score (Mohler: score_avg, 0-5)
+    score_grader_1   grader 1 on the same scale
+    score_grader_2   grader 2 on the same scale
 
 Data files stay in research/data/ (git-ignored) and are never committed.
 """
+import re
 from pathlib import Path
 from typing import Callable, Dict, Optional, Sequence, Tuple
 
@@ -19,16 +24,24 @@ import pandas as pd
 
 LABELS = ("incorrect", "partial", "correct")
 COLUMNS = ["item_id", "question_id", "question", "reference", "answer", "label"]
+SCORE_COLUMNS = ["score", "score_grader_1", "score_grader_2"]
+# Fixed range of the gold score per dataset (never taken from the data, so test rows cannot leak in)
+SCORE_SCALES = {"mohler": (0.0, 5.0), "mohler_raw": (0.0, 5.0), "synthetic": (0.0, 5.0)}
 
 
 def validate(df: pd.DataFrame) -> pd.DataFrame:
-    """Checks the common shape; returns the frame with only the common columns, as strings."""
+    """Checks the common shape; returns the common columns as strings plus any score columns as floats."""
     missing = [c for c in COLUMNS if c not in df.columns]
     if missing:
         raise ValueError(f"Dataset is missing columns {missing}")
-    df = df[COLUMNS].copy()
+    scores = [c for c in SCORE_COLUMNS if c in df.columns]
+    df = df[COLUMNS + scores].copy()
     for column in COLUMNS:
         df[column] = df[column].astype(str)
+    for column in scores:
+        df[column] = df[column].astype(float)
+        if df[column].isna().any():
+            raise ValueError(f"Missing values in {column}")
     if df["item_id"].duplicated().any():
         raise ValueError("item_id values must be unique")
     bad = sorted(set(df["label"]) - set(LABELS))
@@ -79,14 +92,52 @@ def load_engsaf(path: Path, columns: Optional[Dict[str, str]] = None) -> pd.Data
 
 
 # ---------------------------------------------------------------- Mohler et al. (2011)
-# Grades are the average of two graders on 0..5. The cut-offs that turn them into three labels
-# are a research decision; they are fixed here, before any results are seen.
+# Grades are the average of two graders on 0..5. The primary metrics use that number directly;
+# the three labels (a secondary metric) use cut-offs fixed before any results were seen.
 MOHLER_CUTOFFS = (2.5, 4.5)  # < 2.5 incorrect, 2.5 .. < 4.5 partial, >= 4.5 correct
+# Exams E11 and E12 were graded 0..10 by each grader; the averages are already on 0..5
+MOHLER_TEN_POINT = ("E11", "E12")
 
 
 def mohler_label(score: float, cutoffs: Tuple[float, float] = MOHLER_CUTOFFS) -> str:
     low, high = cutoffs
     return "incorrect" if score < low else "partial" if score < high else "correct"
+
+
+def _clean_mohler_text(text: str) -> str:
+    """The cleaned subset marks sentence ends with <STOP>; the text itself is kept as is."""
+    return re.sub(r"\s+", " ", re.sub(r"<STOP>", " ", str(text))).strip()
+
+
+def load_mohler(path: Path, cutoffs: Tuple[float, float] = MOHLER_CUTOFFS) -> pd.DataFrame:
+    """
+    Loads the Hugging Face release nkazi/MohlerASAG, "cleaned" subset, open_ended split
+    (path = the parquet file, or a folder holding cleaned-oe-*.parquet). Closed-ended questions
+    are excluded, as in the authors' own work.
+    item_id = the release's id (EXX.QXX.AXX); question_id = EXX.QXX.
+    score = score_avg (0..5). Grader scores for E11/E12 are halved to 0..5. Note that for those
+    exams the authors' score_avg is not exactly the mean of the halved grades (it is 0.125-0.5
+    higher in about 200 rows), so the human ceiling compares grader 1 with grader 2 directly.
+    """
+    path = Path(path)
+    files = sorted(path.glob("cleaned-oe-*.parquet")) if path.is_dir() else [path]
+    if not files:
+        raise FileNotFoundError(f"No cleaned-oe-*.parquet in {path}")
+    raw = pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
+    ten_point = raw["id"].str[:3].isin(MOHLER_TEN_POINT)
+    scale = np.where(ten_point, 2.0, 1.0)
+    df = pd.DataFrame({
+        "item_id": raw["id"],
+        "question_id": raw["id"].str[:7],
+        "question": raw["question"].map(_clean_mohler_text),
+        "reference": raw["instructor_answer"].map(_clean_mohler_text),
+        "answer": raw["student_answer"].map(_clean_mohler_text),
+        "label": [mohler_label(s, cutoffs) for s in raw["score_avg"]],
+        "score": raw["score_avg"].astype(float),
+        "score_grader_1": raw["score_grader_1"].astype(float) / scale,
+        "score_grader_2": raw["score_grader_2"].astype(float) / scale,
+    })
+    return validate(df)
 
 
 def _read_id_lines(file: Path) -> Dict[str, list]:
@@ -100,12 +151,12 @@ def _read_id_lines(file: Path) -> Dict[str, list]:
     return out
 
 
-def load_mohler(path: Path, cutoffs: Tuple[float, float] = MOHLER_CUTOFFS) -> pd.DataFrame:
+def load_mohler_raw(path: Path, cutoffs: Tuple[float, float] = MOHLER_CUTOFFS) -> pd.DataFrame:
     """
-    Loads ShortAnswerGrading_v2.0 (path = the folder that contains data/, or data/ itself).
-    Uses data/raw/{questions,answers,x.y} and data/scores/x.y/ave; questions commented out
-    with '#' in data/docs/files are skipped, as in the authors' own work.
-    item_id = "<question id>.<0-based answer index>", matching the dataset's x.y.z notation.
+    Loads the original ShortAnswerGrading_v2.0 archive (path = the folder that contains data/,
+    or data/ itself), as an alternative to the Hugging Face release. Uses data/raw and
+    data/scores/x.y/ave; questions commented out with '#' in data/docs/files are skipped.
+    item_id = "<question id>.<0-based answer index>", the dataset's x.y.z notation.
     """
     root = Path(path)
     data = root / "data" if (root / "data").is_dir() else root
@@ -129,6 +180,7 @@ def load_mohler(path: Path, cutoffs: Tuple[float, float] = MOHLER_CUTOFFS) -> pd
                 "reference": references[qid][0],
                 "answer": answer,
                 "label": mohler_label(score, cutoffs),
+                "score": score,
             })
     return validate(pd.DataFrame(rows))
 
@@ -169,6 +221,7 @@ def make_synthetic(n_questions: int = 40, answers_per_question: int = 12, seed: 
 LOADERS: Dict[str, Callable[..., pd.DataFrame]] = {
     "engsaf": load_engsaf,
     "mohler": load_mohler,
+    "mohler_raw": load_mohler_raw,
     "synthetic": lambda path=None: make_synthetic(),
 }
 

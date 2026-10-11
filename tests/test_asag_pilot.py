@@ -56,12 +56,32 @@ def _write_mohler(root):
 
 def test_mohler_loader_skips_commented_questions_and_bins_grades(tmp_path):
     _write_mohler(tmp_path)
-    df = datasets.load("mohler", tmp_path)
+    df = datasets.load("mohler_raw", tmp_path)
     assert list(df["item_id"]) == ["1.1.0", "1.1.1", "1.1.2", "2.1.0"]
     assert "1.2" not in set(df["question_id"])
     assert list(df["label"]) == ["correct", "partial", "incorrect", "correct"]
     assert df.loc[1, "answer"] == "café list"  # latin-1
     assert df.loc[0, "question"] == "What is a stack?" and df.loc[0, "reference"] == "A LIFO list."
+
+
+def test_mohler_hf_loader(tmp_path):
+    pd.DataFrame({
+        "id": ["E01.Q01.A00", "E01.Q01.A01", "E11.Q02.A00"],
+        "question": ["What is a stack? <STOP>", "What is a stack? <STOP>", "Define a heap. <STOP>"],
+        "instructor_answer": ["A LIFO list. <STOP>", "A LIFO list. <STOP>", "A complete tree. <STOP> Ordered."],
+        "student_answer": ["Last in <STOP> first out.", "no idea", "a tree"],
+        "score_grader_1": [5.0, 1.0, 8.0],
+        "score_grader_2": [4.0, 2.0, 6.0],
+        "score_avg": [4.5, 1.5, 3.5],
+    }).to_parquet(tmp_path / "cleaned-oe-00001.parquet")
+    df = datasets.load("mohler", tmp_path)
+    assert list(df["question_id"]) == ["E01.Q01", "E01.Q01", "E11.Q02"]
+    assert df.loc[0, "answer"] == "Last in first out." and df.loc[0, "question"] == "What is a stack?"
+    assert df.loc[2, "reference"] == "A complete tree. Ordered."
+    assert list(df["label"]) == ["correct", "incorrect", "partial"]
+    assert list(df["score"]) == [4.5, 1.5, 3.5]
+    # Exams E11/E12 were graded 0-10 per grader: halved to 0-5
+    assert list(df["score_grader_1"]) == [5.0, 1.0, 4.0] and list(df["score_grader_2"]) == [4.0, 2.0, 3.0]
 
 
 def test_mohler_cutoffs():
@@ -273,7 +293,8 @@ def test_offline_pipeline_end_to_end(offline_paths, big):
     assert list(table["method"]) == pilot.METHODS
     assert (table["n"] == 200).all()  # reported on test only
     cut = json.loads(paths.thresholds.read_text())
-    assert cut["tuned_on"] == "dev" and set(cut) >= {"v1", "b0", "rubric"}
+    assert cut["fitted_on"] == "dev" and set(cut["label_cutoffs"]) >= {"v1", "b0", "rubric"}
+    assert cut["linear_maps_to_gold_scale"] is None  # synthetic data has labels only
     preds = pd.read_csv(paths.predictions)
     assert "answer" not in preds.columns and len(preds) == 300
     md = (paths.test / "metrics.md").read_text(encoding="utf-8")
@@ -322,3 +343,62 @@ def test_real_runs_default_to_no_api_calls(offline_paths, big, monkeypatch):
     assert pilot.main(["split", "--dataset", "synthetic"]) == 0
     assert pilot.main(["rubrics", "--dataset", "synthetic"]) == 2
     assert called.calls == []
+
+
+# ---------------------------------------------------------------- numeric gold scores (Mohler-shaped)
+def _with_scores(df, seed=0):
+    """Adds 0-5 gold and grader scores that follow the labels, like Mohler."""
+    rng = np.random.default_rng(seed)
+    base = df["label"].map({"incorrect": 1.0, "partial": 3.0, "correct": 4.75}).to_numpy()
+    g1 = np.clip(base + rng.normal(0, 0.5, len(df)), 0, 5)
+    g2 = np.clip(base + rng.normal(0, 0.5, len(df)), 0, 5)
+    return df.assign(score=(g1 + g2) / 2, score_grader_1=g1, score_grader_2=g2)
+
+
+def test_cosine_only_report_with_primary_scores_and_ceiling(offline_paths, big):
+    paths = offline_paths
+    df = datasets.validate(_with_scores(big))
+    pilot.stage_split(df, paths)
+    table = pilot.stage_report(df, paths, "synthetic", encode=_fake_encode)  # no grades: cosine methods only
+    assert "rubric_tuned" not in set(table["method"])
+    assert table["method"].iloc[-1] == "human ceiling: grader 1 vs grader 2"
+    primary = pd.read_csv(paths.test / "primary_scores.csv")
+    assert list(primary["method"]) == ["v1", "b0", "human ceiling: grader 1 vs grader 2"]
+    assert (primary["n"] == 200).all()
+    assert primary.loc[2, "pearson"] > 0.8  # graders agree in this synthetic data
+    md = (paths.test / "metrics.md").read_text(encoding="utf-8")
+    assert md.index("primary") < md.index("secondary")
+    maps = json.loads(paths.thresholds.read_text())["linear_maps_to_gold_scale"]
+    assert set(maps) == {"v1", "b0"}
+
+
+def test_linear_map_uses_dev_only(offline_paths, big):
+    paths = offline_paths
+    df = datasets.validate(_with_scores(big))
+    pilot.stage_split(df, paths)
+    pilot.stage_report(df, paths, "synthetic", encode=_fake_encode)
+    first = json.loads(paths.thresholds.read_text())
+    test_ids = set(sampling.load_split(paths.split).query("split == 'test'")["item_id"])
+    changed = df.copy()
+    changed.loc[changed["item_id"].isin(test_ids), "score"] = 0.0
+    pilot.stage_report(changed, paths, "synthetic", encode=_fake_encode)
+    assert json.loads(paths.thresholds.read_text()) == first
+
+
+def test_linear_map_fits_and_clips():
+    m = pilot.linear_map([0, 50, 100], [1, 3, 5], 0, 5)
+    assert m["slope"] == pytest.approx(0.04) and m["intercept"] == pytest.approx(1.0)
+    assert list(pilot.apply_map([0, 100, 200, -100], m)) == pytest.approx([1, 5, 5, 0])
+    flat = pilot.linear_map([7, 7], [2, 4], 0, 5)
+    assert list(pilot.apply_map([0, 100], flat)) == [3, 3]
+
+
+def test_daily_quota_stops_at_once(tmp_path):
+    error = ApiError(429)
+    error.args = ("429 RESOURCE_EXHAUSTED quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier",)
+    slept = []
+    call = FakeCall([error])
+    llm = llm_cache.CachedLLM(tmp_path, model="m1", call=call, max_calls=5, sleep=slept.append)
+    with pytest.raises(llm_cache.QuotaStop, match="daily quota"):
+        llm.generate_json("p")
+    assert slept == [] and len(call.calls) == 1

@@ -7,6 +7,9 @@ Metrics (each with a 95% percentile bootstrap CI, 1000 resamples, fixed seed):
 - Accuracy: exact label agreement
 plus a confusion matrix per method (rows = human, columns = method).
 
+For numeric gold scores (e.g. Mohler's 0-5 averages), evaluate_continuous gives Pearson's r,
+Spearman's rho and RMSE, with the same bootstrap.
+
 Usage:
     python research/evaluate.py predictions.csv --labels incorrect partial correct \\
         --methods v1_cosine b0_cosine rubric --out research/results/engsaf_test
@@ -21,7 +24,7 @@ from typing import Callable, Dict, List, Optional, Sequence
 
 import numpy as np
 import pandas as pd
-from scipy.stats import spearmanr
+from scipy.stats import rankdata
 
 N_RESAMPLES = 1000
 SEED = 42
@@ -66,11 +69,23 @@ def spearman(y_true: np.ndarray, scores: np.ndarray) -> float:
     """Spearman's rho; NaN when either side is constant."""
     if np.ptp(y_true) == 0 or np.ptp(scores) == 0:
         return math.nan
-    return float(spearmanr(y_true, scores).statistic)
+    # Pearson on average ranks (identical to scipy's spearmanr, much faster in the bootstrap)
+    return float(np.corrcoef(rankdata(y_true), rankdata(scores))[0, 1])
 
 
 def accuracy(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     return float(np.mean(y_true == y_pred)) if len(y_true) else math.nan
+
+
+def pearson(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    """Pearson's r; NaN when either side is constant."""
+    if len(y_true) < 2 or np.ptp(y_true) == 0 or np.ptp(y_pred) == 0:
+        return math.nan
+    return float(np.corrcoef(y_true, y_pred)[0, 1])
+
+
+def rmse(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    return float(np.sqrt(np.mean((np.asarray(y_true) - np.asarray(y_pred)) ** 2))) if len(y_true) else math.nan
 
 
 def bootstrap_ci(
@@ -131,6 +146,47 @@ def evaluate_method(
         result[f"{name}_ci_high"] = high
         result[f"{name}_ci_resamples"] = valid
     return result
+
+
+def evaluate_continuous(
+    gold: Sequence[float], predicted: Sequence[float], n_resamples: int = N_RESAMPLES, seed: int = SEED,
+) -> Dict[str, float]:
+    """Pearson, Spearman and RMSE of predicted vs gold scores (same scale), with bootstrap CIs."""
+    y = np.asarray(gold, dtype=float)
+    p = np.asarray(predicted, dtype=float)
+    if len(y) != len(p):
+        raise ValueError("gold and predicted must have the same length")
+    metrics = {
+        "pearson": (lambda i: pearson(y[i], p[i])),
+        "spearman": (lambda i: spearman(y[i], p[i])),
+        "rmse": (lambda i: rmse(y[i], p[i])),
+    }
+    everyone = np.arange(len(y))
+    result: Dict[str, float] = {"n": len(y)}
+    for name, fn in metrics.items():
+        low, high, valid = bootstrap_ci(fn, len(y), n_resamples, seed)
+        result[name] = fn(everyone)
+        result[f"{name}_ci_low"] = low
+        result[f"{name}_ci_high"] = high
+        result[f"{name}_ci_resamples"] = valid
+    return result
+
+
+def continuous_markdown(table: pd.DataFrame, title: str, scale: str = "") -> str:
+    lines = [
+        f"# {title}",
+        "",
+        f"95% percentile bootstrap CIs, {N_RESAMPLES} resamples, seed {SEED}." + (f" RMSE is on the {scale} scale." if scale else ""),
+        "",
+        "| Method | n | Pearson r [95% CI] | Spearman [95% CI] | RMSE [95% CI] |",
+        "|---|---|---|---|---|",
+    ]
+    for _, r in table.iterrows():
+        cells = [
+            f"{_fmt(r[m])} [{_fmt(r[m + '_ci_low'])}, {_fmt(r[m + '_ci_high'])}]" for m in ("pearson", "spearman", "rmse")
+        ]
+        lines.append(f"| {r['method']} | {int(r['n'])} | " + " | ".join(cells) + " |")
+    return "\n".join(lines) + "\n"
 
 
 def evaluate_frame(df: pd.DataFrame, methods: List[str], labels: Sequence[str], human_col: str = "human") -> pd.DataFrame:

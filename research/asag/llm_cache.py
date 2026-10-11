@@ -39,6 +39,12 @@ def _status(error: BaseException) -> Optional[int]:
     return None
 
 
+def is_daily_quota(error: BaseException) -> bool:
+    """A 429 for a per-day quota (e.g. GenerateRequestsPerDayPerProjectPerModel): waiting minutes will not help."""
+    text = f"{error} {error.__cause__ or ''}".lower()
+    return _status(error) == 429 and "perday" in text.replace("_", "").replace("-", "").replace(" ", "")
+
+
 class CachedLLM:
     def __init__(
         self,
@@ -110,6 +116,8 @@ class CachedLLM:
             except Exception as e:
                 if _status(e) not in BACKOFF_STATUS:
                     raise
+                if is_daily_quota(e):
+                    raise QuotaStop(f"{self.model}: daily quota used up; run again tomorrow to continue") from e
                 if attempt == len(self.backoff_s):
                     raise QuotaStop(f"{self.model} still refusing after {attempt} retries: {e}") from e
                 self.retries += 1

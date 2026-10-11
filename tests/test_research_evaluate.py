@@ -38,7 +38,7 @@ def test_qwk_matches_reference_formula():
 
 
 def test_qwk_matches_sklearn():
-    from sklearn.metrics import cohen_kappa_score
+    cohen_kappa_score = pytest.importorskip("sklearn.metrics").cohen_kappa_score
     rng = np.random.default_rng(5)
     for k in (3, 6):
         a, b = rng.integers(0, k, 80), rng.integers(0, k, 80)
@@ -111,3 +111,29 @@ def test_cli_writes_csv_and_markdown(tmp_path):
     md = (out / "metrics.md").read_text(encoding="utf-8")
     assert md.startswith("# Pilot") and "| rubric | 6 |" in md and "Confusion matrix: cosine" in md
     assert (out / "confusion_rubric.csv").exists() and (out / "confusion_cosine.csv").exists()
+
+
+def test_pearson_and_rmse():
+    assert ev.pearson(np.array([1.0, 2, 3]), np.array([2.0, 4, 6])) == pytest.approx(1.0)
+    assert math.isnan(ev.pearson(np.array([1.0, 1, 1]), np.array([1.0, 2, 3])))
+    assert ev.rmse(np.array([0.0, 0, 0, 0]), np.array([1.0, 1, -1, -1])) == 1.0
+
+
+def test_evaluate_continuous_has_cis():
+    rng = np.random.default_rng(2)
+    gold = rng.uniform(0, 5, 150)
+    pred = gold + rng.normal(0, 0.5, 150)
+    result = ev.evaluate_continuous(gold, pred)
+    assert result == ev.evaluate_continuous(gold, pred)
+    for metric in ("pearson", "spearman", "rmse"):
+        assert result[f"{metric}_ci_low"] <= result[metric] <= result[f"{metric}_ci_high"]
+    assert 0.4 < result["rmse"] < 0.6 and result["pearson"] > 0.9
+    table = pd.DataFrame([{"method": "m", **result}])
+    assert "| m | 150 |" in ev.continuous_markdown(table, "T", "0-5")
+
+
+def test_spearman_matches_scipy_with_ties():
+    from scipy.stats import spearmanr
+    rng = np.random.default_rng(9)
+    a, b = rng.integers(0, 3, 60).astype(float), rng.normal(size=60).round(1)
+    assert ev.spearman(a, b) == pytest.approx(spearmanr(a, b).statistic)
