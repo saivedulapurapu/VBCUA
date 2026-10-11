@@ -6,8 +6,13 @@ Stages (run in this order; each one reads what the previous one saved):
     split    stratified sample (by question and label, fixed seed) and the dev/test split.
              Saved once and never overwritten, so the split is fixed before any scoring.
     plan     counts the LLM calls still needed (rubrics + grading). Makes no calls.
-    rubrics  one rubric per sampled question, from the question + reference answer only.
-    grade    rubric grading of every sampled answer.
+    rubrics  one rubric per sampled question, from the question + reference answer only,
+             10 questions per call (fits a free-tier daily quota).
+    grade    rubric grading: one call per question, all its sampled answers together
+             (shuffled with a fixed seed, labelled A1, A2, ..., graded independently).
+    check    batching check: 10 fixed dev answers re-graded one per call and compared.
+    run      rubrics, then grade, then check, under one --max-calls budget (one day's work);
+             prints the calls still needed at the end.
     report   cosine scores (and rubric scores once graded), everything fitted on dev only,
              metrics on test only. Datasets with numeric gold scores (Mohler) get Pearson,
              Spearman and RMSE as primary metrics and a grader-1-vs-grader-2 ceiling.
@@ -37,7 +42,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Sequence
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -78,13 +83,20 @@ def _words(text: str) -> List[str]:
     return re.findall(r"[a-z0-9]+", text.lower())
 
 
-def offline_call(prompt: str, schema=None, system=None, temperature=None, model=None) -> Dict:
-    """Deterministic stand-in for Gemini, for dry runs on synthetic data only."""
-    if "Reference answer:" in prompt and "Student answer:" not in prompt:
-        reference = prompt.split("Reference answer:")[1].split("Rules:")[0]
-        words = list(dict.fromkeys(_words(reference)))[:6] or ["answer"]
-        return {"key_points": [{"id": f"K{i}", "text": w} for i, w in enumerate(words, 1)],
-                "misconceptions": [{"id": "M1", "text": "unrelated claim"}]}
+def _offline_rubric(reference: str) -> Dict:
+    words = list(dict.fromkeys(_words(reference)))[:6] or ["answer"]
+    return {"key_points": [{"id": f"K{i}", "text": w} for i, w in enumerate(words, 1)],
+            "misconceptions": [{"id": "M1", "text": "unrelated claim"}]}
+
+
+def offline_call(prompt: str, schema=None, system=None, temperature=None, model=None):
+    """Deterministic stand-in for Gemini rubric writing, for dry runs on synthetic data only."""
+    if prompt.startswith("Write an analytic rubric for each of"):
+        blocks = re.findall(r"^Q(\d+)\nQuestion:\n.*?\nReference answer:\n(.*?)(?=\n\nQ\d+\n|\n\nRules for every rubric:)",
+                            prompt, flags=re.S | re.M)
+        return [{"question": f"Q{n}", **_offline_rubric(ref)} for n, ref in blocks]
+    if "Reference answer:" in prompt and "Student answer" not in prompt:
+        return _offline_rubric(prompt.split("Reference answer:")[1].split("Rules:")[0])
     raise ValueError("The offline stand-in only writes rubrics; use offline_grade for grading")
 
 
@@ -95,18 +107,48 @@ def offline_grade(question: str, answer: str, rubric: Dict, llm) -> Dict:
     return {"key_point_scores": points, "misconceptions_present": [], "score": 100 * sum(points) / (2 * len(points))}
 
 
-def _grader(offline: bool) -> Callable:
-    if offline:
-        return offline_grade
-    from research.asag import grader  # the rubric grader (added in its own commit)
-    return grader.grade_answer
+def offline_grade_batch(question: str, question_id: str, answers: Dict[str, str], rubric: Dict, llm) -> Dict[str, Dict]:
+    return {item_id: offline_grade(question, text, rubric, llm) for item_id, text in answers.items()}
 
 
-def _grade_prompt_cached(offline: bool) -> Optional[Callable]:
-    if offline:
-        return None
-    from research.asag import grader
-    return grader.is_cached
+# ---------------------------------------------------------------- call grouping (free-tier quota)
+# Grading groups: all sampled answers to one question in one call. If True, dev and test answers
+# of a question are graded in separate calls instead (about twice the calls).
+GROUP_BY_SPLIT = False
+# Batching check: this many dev answers are re-graded one per call and compared with their batched grades
+CHECK_N = 10
+CHECK_SEED = 42
+
+
+def grading_groups(sample: pd.DataFrame) -> List[Tuple[str, pd.DataFrame]]:
+    """[(group key, rows)] in a fixed order; the key is the question id (plus the split if GROUP_BY_SPLIT)."""
+    keys = ["question_id", "split"] if GROUP_BY_SPLIT else ["question_id"]
+    groups = []
+    for key, rows in sample.groupby(keys, sort=True):
+        key = key if isinstance(key, tuple) else (key,)
+        groups.append(("/".join(key), rows.sort_values("item_id")))
+    return groups
+
+
+def _rubric_path(paths: Paths, question_id: str) -> Path:
+    return paths.rubrics / f"{_safe(question_id)}.json"
+
+
+def _batch_inputs(questions: pd.DataFrame, batch: List[str]) -> List[Dict[str, str]]:
+    by_id = questions.set_index("question_id")
+    return [{"question": by_id.loc[q, "question"], "reference": by_id.loc[q, "reference"]} for q in batch]
+
+
+def check_ids(sample: pd.DataFrame, paths: Paths) -> List[str]:
+    """The CHECK_N dev answers for the batching check, drawn once with a fixed seed and saved."""
+    file = paths.results / "batch_check_ids.csv"
+    if file.exists():
+        return pd.read_csv(file, dtype=str)["item_id"].tolist()
+    dev = sorted(sample.loc[sample["split"] == "dev", "item_id"])
+    chosen = sorted(np.random.default_rng(CHECK_SEED).choice(dev, size=min(CHECK_N, len(dev)), replace=False).tolist())
+    file.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame({"item_id": chosen}).to_csv(file, index=False)
+    return chosen
 
 
 # ---------------------------------------------------------------- stages
@@ -131,78 +173,171 @@ def _questions(sample: pd.DataFrame) -> pd.DataFrame:
     return sample.drop_duplicates("question_id")[["question_id", "question", "reference"]].sort_values("question_id")
 
 
+def _graded(paths: Paths) -> pd.DataFrame:
+    return pd.read_csv(paths.grades, dtype={"item_id": str}) if paths.grades.exists() else pd.DataFrame(columns=["item_id"])
+
+
 def stage_plan(df: pd.DataFrame, paths: Paths, llm: CachedLLM, offline: bool) -> Dict[str, int]:
     """Counts the API calls the remaining stages need. Makes no calls."""
+    from research.asag import grader
+
     sample = _sample(df, paths)
     questions = _questions(sample)
-    rubric_calls = sum(
-        not (paths.rubrics / f"{_safe(q.question_id)}.json").exists()
-        and not llm.is_cached(rubrics.generation_prompt(q.question, q.reference), rubrics.GENERATION_SCHEMA, rubrics.GENERATION_SYSTEM)
-        for q in questions.itertuples()
-    )
-    done = set(pd.read_csv(paths.grades, dtype=str)["item_id"]) if paths.grades.exists() else set()
+    rubric_calls = 0
+    for batch in rubrics.batches(questions["question_id"].tolist()):
+        if all(_rubric_path(paths, q).exists() for q in batch):
+            continue
+        prompt = rubrics.batch_prompt(_batch_inputs(questions, batch))
+        rubric_calls += not llm.is_cached(prompt, rubrics.BATCH_SCHEMA, rubrics.GENERATION_SYSTEM)
+    done = set(_graded(paths)["item_id"])
     grade_calls = 0
-    is_cached = None
-    for row in sample.itertuples():
-        if offline or row.item_id in done:
+    for _, rows in grading_groups(sample):
+        if offline or set(rows["item_id"]) <= done:
             continue
-        rubric_file = paths.rubrics / f"{_safe(row.question_id)}.json"
-        if not rubric_file.exists():
-            grade_calls += 1  # the grading prompt needs the rubric, so it cannot be cached yet
+        qid = rows["question_id"].iloc[0]
+        if not _rubric_path(paths, qid).exists():
+            grade_calls += 1  # needs the rubric first, so it cannot be cached yet
             continue
-        is_cached = is_cached or _grade_prompt_cached(offline)
-        if not is_cached(row.question, row.answer, rubrics.load_rubric(rubric_file), llm):
-            grade_calls += 1
+        answers = dict(zip(rows["item_id"], rows["answer"]))
+        grade_calls += not grader.is_batch_cached(rows["question"].iloc[0], qid, answers, rubrics.load_rubric(_rubric_path(paths, qid)), llm)
+    check_calls = 0
+    if not offline:
+        by_id = sample.set_index("item_id")
+        for item_id in check_ids(sample, paths):
+            row = by_id.loc[item_id]
+            rubric_file = _rubric_path(paths, row["question_id"])
+            if not (rubric_file.exists() and grader.is_cached(row["question"], row["answer"], rubrics.load_rubric(rubric_file), llm)):
+                check_calls += 1
     plan = {"questions": len(questions), "answers": len(sample), "rubric_calls": rubric_calls,
-            "grading_calls": grade_calls, "total_calls": rubric_calls + grade_calls}
+            "grading_calls": grade_calls, "check_calls": check_calls,
+            "total_calls": rubric_calls + grade_calls + check_calls}
     print(f"Model: {llm.model}")
     print(f"Sample: {plan['answers']} answers ({(sample['split'] == 'dev').sum()} dev / {(sample['split'] == 'test').sum()} test) "
           f"to {plan['questions']} questions")
-    print(f"LLM calls still needed: {plan['rubric_calls']} rubric + {plan['grading_calls']} grading = {plan['total_calls']}")
+    print(f"LLM calls still needed: {rubric_calls} rubric batches + {grade_calls} grading groups + {check_calls} batching-check "
+          f"= {plan['total_calls']}")
     return plan
 
 
-def stage_rubrics(df: pd.DataFrame, paths: Paths, llm: CachedLLM) -> int:
+def stage_rubrics(df: pd.DataFrame, paths: Paths, llm: CachedLLM, only: Optional[List[str]] = None) -> int:
+    """One call per batch of up to rubrics.BATCH_SIZE questions (question + reference answer only)."""
     questions = _questions(_sample(df, paths))
     made = 0
-    for q in questions.itertuples():
-        path = paths.rubrics / f"{_safe(q.question_id)}.json"
-        if path.exists():
+    for index, batch in enumerate(rubrics.batches(questions["question_id"].tolist())):
+        if only is not None and not set(batch) & set(only):
             continue
-        # Only the question and the reference answer go into the prompt
-        rubric = rubrics.generate_rubric(q.question, q.reference, llm)
-        key = llm.key(rubrics.generation_prompt(q.question, q.reference), rubrics.GENERATION_SCHEMA, rubrics.GENERATION_SYSTEM)
-        rubrics.save_rubric(path, q.question_id, rubric, llm.model, key)
-        made += 1
-    print(f"Rubrics: {made} new, {len(questions) - made} already saved, in {paths.rubrics}")
+        if all(_rubric_path(paths, q).exists() for q in batch):
+            continue
+        inputs = _batch_inputs(questions, batch)
+        generated = rubrics.generate_rubric_batch(inputs, llm)
+        key = llm.key(rubrics.batch_prompt(inputs), rubrics.BATCH_SCHEMA, rubrics.GENERATION_SYSTEM)
+        for qid, rubric in zip(batch, generated):
+            rubrics.save_rubric(_rubric_path(paths, qid), qid, {**rubric, "batch": index}, llm.model, key)
+            made += 1
+    print(f"Rubrics: {made} new, in {paths.rubrics}")
     return made
 
 
-def stage_grade(df: pd.DataFrame, paths: Paths, llm: CachedLLM, offline: bool) -> pd.DataFrame:
+def _grade_row(item_id: str, result: Dict) -> Dict:
+    return {"item_id": item_id, "rubric_score": result["score"],
+            "key_point_scores": json.dumps(result["key_point_scores"]),
+            "key_point_scores_raw": json.dumps(result.get("key_point_scores_raw", result["key_point_scores"])),
+            "key_points_rejected": json.dumps(result.get("key_points_rejected", [])),
+            "misconceptions_present": json.dumps(result["misconceptions_present"]),
+            "misconceptions_rejected": json.dumps(result.get("misconceptions_rejected", [])),
+            "evidence": json.dumps(result.get("evidence", {}), ensure_ascii=False),
+            "batch_label": result.get("batch_label", ""), "batch_size": result.get("batch_size", "")}
+
+
+def stage_grade(df: pd.DataFrame, paths: Paths, llm: CachedLLM, offline: bool,
+                only: Optional[List[str]] = None) -> pd.DataFrame:
+    """One call per grading group (see grading_groups). only: restrict to these question ids."""
     sample = _sample(df, paths)
-    grade = _grader(offline)
-    done = pd.read_csv(paths.grades, dtype={"item_id": str}) if paths.grades.exists() else pd.DataFrame()
-    rows = done.to_dict("records")
+    if offline:
+        grade_batch = offline_grade_batch
+    else:
+        from research.asag import grader
+        grade_batch = grader.grade_batch
+    rows = _graded(paths).to_dict("records")
     seen = {r["item_id"] for r in rows}
     paths.grades.parent.mkdir(parents=True, exist_ok=True)
     try:
-        for row in sample.itertuples():
-            if row.item_id in seen:
+        for _, group in grading_groups(sample):
+            qid = group["question_id"].iloc[0]
+            if (only is not None and qid not in only) or set(group["item_id"]) <= seen:
                 continue
-            rubric_file = paths.rubrics / f"{_safe(row.question_id)}.json"
-            if not rubric_file.exists():
-                raise SystemExit(f"No rubric for question {row.question_id}: run the `rubrics` stage first.")
-            result = grade(row.question, row.answer, rubrics.load_rubric(rubric_file), llm)
-            rows.append({"item_id": row.item_id, "rubric_score": result["score"],
-                         "key_point_scores": json.dumps(result["key_point_scores"]),
-                         "misconceptions_present": json.dumps(result["misconceptions_present"]),
-                         "misconceptions_rejected": json.dumps(result.get("misconceptions_rejected", [])),
-                         "evidence": json.dumps(result.get("evidence", {}), ensure_ascii=False)})
+            if not _rubric_path(paths, qid).exists():
+                raise SystemExit(f"No rubric for question {qid}: run the `rubrics` stage first.")
+            answers = dict(zip(group["item_id"], group["answer"]))
+            results = grade_batch(group["question"].iloc[0], qid, answers, rubrics.load_rubric(_rubric_path(paths, qid)), llm)
+            for item_id in group["item_id"]:
+                if item_id not in seen:
+                    rows.append(_grade_row(item_id, results[item_id]))
+                    seen.add(item_id)
     finally:
         # Saved even when the run stops on quota or budget, so the next run resumes
         pd.DataFrame(rows).to_csv(paths.grades, index=False)
     print(f"Grades: {len(rows)} of {len(sample)} answers graded, in {paths.grades}")
     return pd.DataFrame(rows)
+
+
+def stage_check(df: pd.DataFrame, paths: Paths, llm: CachedLLM, only: Optional[List[str]] = None) -> Optional[pd.DataFrame]:
+    """
+    Batching check: re-grades the fixed CHECK_N dev answers one per call and compares each with its
+    batched grade. Writes research/results/<dataset>/batch_check.md (scores only, no text).
+    """
+    from research.asag import grader
+
+    sample = _sample(df, paths).set_index("item_id")
+    batched = _graded(paths).set_index("item_id")
+    check_file = paths.data / "check_grades.csv"
+    rows = pd.read_csv(check_file, dtype={"item_id": str}).to_dict("records") if check_file.exists() else []
+    done = {r["item_id"] for r in rows}
+    waiting = []
+    try:
+        for item_id in check_ids(sample.reset_index(), paths):
+            row = sample.loc[item_id]
+            if only is not None and row["question_id"] not in only:
+                continue
+            if item_id not in batched.index:
+                waiting.append(item_id)
+                continue
+            if item_id in done:
+                continue
+            rubric = rubrics.load_rubric(_rubric_path(paths, row["question_id"]))
+            result = grader.grade_answer(row["question"], row["answer"], rubric, llm)
+            rows.append(_grade_row(item_id, result))
+    finally:
+        if rows:
+            check_file.parent.mkdir(parents=True, exist_ok=True)
+            pd.DataFrame(rows).to_csv(check_file, index=False)
+    if waiting:
+        print(f"Batching check: {len(waiting)} of {CHECK_N} answers have no batched grade yet.")
+    if not rows:
+        return None
+    single = pd.DataFrame(rows).set_index("item_id")
+    compared = []
+    for item_id in single.index:
+        b, s = batched.loc[item_id], single.loc[item_id]
+        kb, ks = json.loads(b["key_point_scores"]), json.loads(s["key_point_scores"])
+        compared.append({"item_id": item_id, "batched_score": float(b["rubric_score"]), "single_score": float(s["rubric_score"]),
+                         "difference": float(b["rubric_score"]) - float(s["rubric_score"]),
+                         "key_point_marks_equal": sum(x == y for x, y in zip(kb, ks)), "key_points": len(kb)})
+    table = pd.DataFrame(compared)
+    diff = table["difference"]
+    marks_equal = table["key_point_marks_equal"].sum() / table["key_points"].sum()
+    lines = [
+        f"# Batching check ({len(table)} of {CHECK_N} dev answers)", "",
+        "Each answer was graded once inside its question's batch and once on its own (same rubric, temperature 0).", "",
+        f"- Mean absolute score difference: {diff.abs().mean():.1f} points (0-100 scale); mean signed (batched - single): {diff.mean():+.1f}",
+        f"- Identical scores: {(diff == 0).sum()} of {len(table)}; largest difference: {diff.abs().max():.1f}",
+        f"- Key-point marks identical: {marks_equal:.0%}", "",
+        "| Answer | Batched | Single | Difference | Key-point marks equal |", "|---|---|---|---|---|",
+    ] + [f"| {r.item_id} | {r.batched_score:.1f} | {r.single_score:.1f} | {r.difference:+.1f} | {r.key_point_marks_equal}/{r.key_points} |"
+         for r in table.itertuples()]
+    (paths.results / "batch_check.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print("\n".join(lines[:7]))
+    return table
 
 
 def cosine_scores(sample: pd.DataFrame, encode: Optional[Callable] = None) -> np.ndarray:
@@ -347,7 +482,7 @@ def stage_report(df: pd.DataFrame, paths: Paths, dataset: str, encode: Optional[
 # ---------------------------------------------------------------- CLI
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("stage", choices=["split", "plan", "rubrics", "grade", "report", "all"])
+    parser.add_argument("stage", choices=["split", "plan", "rubrics", "grade", "check", "run", "report", "all"])
     parser.add_argument("--dataset", required=True, choices=sorted(datasets.LOADERS))
     parser.add_argument("--data", type=Path, help="dataset file or folder (in research/data/)")
     parser.add_argument("--max-calls", type=int, default=0, help="approved number of new LLM calls (default 0: cache only)")
@@ -376,8 +511,15 @@ def main(argv: Optional[List[str]] = None) -> int:
             stage_plan(df, paths, llm, args.offline)
         if args.stage in ("rubrics", "all"):
             stage_rubrics(df, paths, llm)
+        if args.stage == "run":
+            # One day's work under one budget: rubrics, then grading, then the batching check
+            stage_rubrics(df, paths, llm)
+            stage_grade(df, paths, llm, args.offline)
+            stage_check(df, paths, llm)
         if args.stage in ("grade", "all"):
             stage_grade(df, paths, llm, args.offline)
+        if args.stage == "check":
+            stage_check(df, paths, llm)
         if args.stage in ("report", "all"):
             stage_report(df, paths, args.dataset)
     except (BudgetExceeded, QuotaStop) as e:
@@ -386,6 +528,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     finally:
         if llm.calls or llm.hits:
             print(f"LLM: {llm.calls} new calls, {llm.hits} from cache, {llm.retries} retries after refusals")
+            tokens = llm.tokens()
+            print("Tokens (new calls): " + ", ".join(f"{k.replace('_token_count', '')} {v}" for k, v in tokens.items()))
+        if args.stage == "run":
+            stage_plan(df, paths, llm, args.offline)
     return 0
 
 

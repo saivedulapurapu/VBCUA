@@ -1,4 +1,6 @@
-"""Smoke test helper: dev-only selection, evidence-quote check, report."""
+"""Smoke test of the batched design: batch-0 questions only, dev answers shown, partial runs reported."""
+import re
+
 import numpy as np
 
 from research.asag import datasets, llm_cache, pilot, smoke
@@ -13,49 +15,59 @@ def test_evidence_quote_check():
     assert smoke.evidence_in_answer("", answer) is None
 
 
-def _scored(n_questions=20):
-    df = datasets.make_synthetic(n_questions=n_questions, answers_per_question=40, seed=4)
-    rng = np.random.default_rng(0)
-    g = rng.uniform(0, 5, len(df))
+def _scored():
+    df = datasets.make_synthetic(n_questions=30, answers_per_question=40, seed=4)
+    g = np.random.default_rng(0).uniform(0, 5, len(df))
     return datasets.validate(df.assign(score=g, score_grader_1=g, score_grader_2=g))
 
 
-def test_smoke_uses_dev_only_and_reuses_pipeline_files(tmp_path, monkeypatch):
+def fake_call(prompt, *, schema=None, system=None, temperature=None, model=None):
+    if "<answer id=" in prompt:
+        n_kp = len(re.findall(r"^  K\d+:", prompt, flags=re.M))
+        return [{"answer": label,
+                 "key_points": [{"id": f"K{i}", "evidence": text.split()[0], "mark": 2} for i in range(1, n_kp + 1)],
+                 "misconceptions": [{"id": "M1", "evidence": "not in the answer", "present": True}]}
+                for label, text in re.findall(r'<answer id="(A\d+)">\n(.*?)\n</answer>', prompt)]
+    if "<answer>" in prompt:
+        n_kp = len(re.findall(r"^  K\d+:", prompt, flags=re.M))
+        text = prompt.split("<answer>\n")[1].split("\n</answer>")[0]
+        return {"key_points": [{"id": f"K{i}", "evidence": text.split()[0], "mark": 2} for i in range(1, n_kp + 1)],
+                "misconceptions": [{"id": "M1", "evidence": "", "present": False}]}
+    return pilot.offline_call(prompt)
+
+
+def _setup(tmp_path, monkeypatch):
     monkeypatch.setattr(pilot, "DATA_ROOT", tmp_path / "data")
     monkeypatch.setattr(pilot, "RESULTS_ROOT", tmp_path / "results")
     df = _scored()
     paths = pilot.Paths("synthetic")
     pilot.stage_split(df, paths)
+    return df, paths
 
-    def call(prompt, *, schema=None, system=None, temperature=None, model=None):
-        if "Student answer" not in prompt:
-            return pilot.offline_call(prompt)
-        n_kp = prompt.count("\n  K")
-        answer = prompt.split("<answer>\n")[1].split("\n</answer>")[0]
-        return {"key_points": [{"id": f"K{i}", "evidence": answer.split()[0], "mark": 2} for i in range(1, n_kp + 1)],
-                "misconceptions": [{"id": "M1", "evidence": "not in the answer", "present": False}]}
 
-    llm = llm_cache.CachedLLM(tmp_path / "cache", model="m1", max_calls=100, call=call)
-    out = smoke.run(df, paths, llm, n_questions=3)
-    assert (out["items"]["split"] == "dev").all() and out["items"]["question_id"].nunique() == 3
-    assert len(out["rubrics"]) == 3 and len(out["results"]) == len(out["items"])
-    assert all((paths.rubrics / f"{q}.json").exists() for q in out["rubrics"])  # reused by the rubrics stage
-    report = smoke.render(out, show=2)
-    assert "failed to parse or validate: 0" in report
-    assert f"not found in the answer: {len(out['results'])}" in report  # the M1 quotes are invented
-    assert report.count("## Grading ") == 2 and "## All gradings" in report
-    # Same prompts as the pipeline: running the stages afterwards needs no new calls for these
+def test_smoke_covers_first_rubric_batch_and_shows_dev_only(tmp_path, monkeypatch):
+    df, paths = _setup(tmp_path, monkeypatch)
+    llm = llm_cache.CachedLLM(tmp_path / "cache", model="m1", max_calls=100, call=fake_call)
+    out = smoke.run(df, paths, llm)
+    batch0 = smoke.smoke_questions(pilot._sample(df, paths))
+    assert out["questions"] == batch0 and len(batch0) == 10 and out["stopped"] is None
+    assert set(out["rubrics"]) == set(batch0)
+    n_checks = len(set(pilot.check_ids(pilot._sample(df, paths), paths)) & set(out["sample"]["item_id"]))
+    assert llm.calls == 1 + len(batch0) + n_checks
+    report = smoke.render(out)
+    test_ids = out["sample"].loc[out["sample"]["split"] == "test", "item_id"]
+    assert not any(f"| {i} |" in report or f"### {i} " in report for i in test_ids)  # no test answers shown
+    assert "failed to parse or validate: 0" in report and "misconception flags not counted" in report
     calls = llm.calls
-    assert smoke.run(df, paths, llm, n_questions=3) and llm.calls == calls
+    smoke.run(df, paths, llm)
+    assert llm.calls == calls  # everything reused from the cache and the saved files
 
 
 def test_smoke_reports_partial_results_when_budget_runs_out(tmp_path, monkeypatch):
-    monkeypatch.setattr(pilot, "DATA_ROOT", tmp_path / "data")
-    monkeypatch.setattr(pilot, "RESULTS_ROOT", tmp_path / "results")
-    df = _scored()
-    paths = pilot.Paths("synthetic")
-    pilot.stage_split(df, paths)
-    llm = llm_cache.CachedLLM(tmp_path / "cache", model="m1", max_calls=2, call=pilot.offline_call)
-    out = smoke.run(df, paths, llm, n_questions=3)
-    assert "budget" in out["stopped"] and len(out["rubrics"]) == 2 and out["results"] == []
-    assert smoke.render(out, show=5).count("## Rubric ") == 2
+    df, paths = _setup(tmp_path, monkeypatch)
+    llm = llm_cache.CachedLLM(tmp_path / "cache", model="m1", max_calls=3, call=fake_call)
+    out = smoke.run(df, paths, llm)
+    assert "budget" in out["stopped"] and len(out["rubrics"]) == 10
+    graded_questions = out["sample"][out["sample"]["item_id"].isin(out["grades"].index)]["question_id"].nunique()
+    assert graded_questions == 2
+    assert smoke.render(out).count("## Rubric ") == 10

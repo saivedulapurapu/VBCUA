@@ -290,7 +290,7 @@ def test_offline_pipeline_end_to_end(offline_paths, big):
     assert pilot.stage_split(big.sample(frac=1, random_state=0), paths).equals(split)  # never re-drawn
 
     plan = pilot.stage_plan(big, paths, llm, offline=True)
-    assert plan["answers"] == 300 and plan["rubric_calls"] == plan["questions"]
+    assert plan["answers"] == 300 and plan["rubric_calls"] == -(-plan["questions"] // 10)  # batches of up to 10
 
     assert pilot.stage_rubrics(big, paths, llm) == plan["questions"]
     assert pilot.stage_rubrics(big, paths, llm) == 0
@@ -332,7 +332,10 @@ def test_plan_counts_calls_before_rubrics_exist(offline_paths, big):
     pilot.stage_split(big, paths)
     llm = llm_cache.CachedLLM(paths.data / "cache", model="m1", max_calls=0, call=FakeCall())
     plan = pilot.stage_plan(big, paths, llm, offline=False)
-    assert plan["grading_calls"] == 300 and plan["total_calls"] == plan["questions"] + 300
+    # Batched design: rubric batches of up to 10 questions, one grading call per question, 10 check calls
+    assert plan["rubric_calls"] == -(-plan["questions"] // 10)
+    assert plan["grading_calls"] == plan["questions"] and plan["check_calls"] == 10
+    assert plan["total_calls"] == plan["rubric_calls"] + plan["questions"] + 10
 
 
 def test_cli_refuses_unsafe_combinations():

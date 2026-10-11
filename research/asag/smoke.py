@@ -1,18 +1,19 @@
 """
-Smoke test of rubric generation and grading on a few DEV answers (never test answers).
+Smoke test of the batched design on the first rubric batch, before the full run.
 
-Picks the dev questions with the most dev answers (ties: question id), generates their rubrics
-exactly as the `rubrics` stage does (same prompt, same cache, same saved file, so nothing is
-paid twice), grades their dev answers exactly as the `grade` stage does, and checks that every
-reply parsed and that every evidence quote really occurs in the answer.
+Runs exactly what the pilot stages run, restricted to the questions of rubric batch 0 (same
+prompts, cache, rubric files and grades.csv, so nothing is paid twice):
+  1 rubric call for the batch, one grading call per question (--questions, default all of the
+  batch), and the batching check for those of the 10 fixed check answers that belong to them.
+The report shows the rubrics and the gradings of DEV answers only; grades of test answers that
+share a grading call are stored for the final report but not shown or analysed here.
 
-    python -m research.asag.smoke --dataset mohler --data research/data/mohler --questions 6 --max-calls 18
+    python -m research.asag.smoke --dataset mohler --data research/data/mohler --max-calls 20
 
 The report (with answer text) goes to research/data/<dataset>/smoke.md, which is git-ignored.
 """
 import argparse
 import json
-import re
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -28,104 +29,98 @@ def evidence_in_answer(quote: str, answer: str) -> Optional[bool]:
     return None if not (quote or "").strip() else grader.quote_in_answer(quote, answer)
 
 
-def select_dev(sample: pd.DataFrame, n_questions: int) -> pd.DataFrame:
-    dev = sample[sample["split"] == "dev"]
-    counts = dev.groupby("question_id").size().reset_index(name="n")
-    chosen = counts.sort_values(["n", "question_id"], ascending=[False, True]).head(n_questions)["question_id"]
-    return dev[dev["question_id"].isin(set(chosen))].sort_values("item_id")
+def smoke_questions(sample: pd.DataFrame, n_questions: Optional[int] = None) -> List[str]:
+    first = rubrics.batches(sorted(sample["question_id"].unique()))[0]
+    return first[:n_questions] if n_questions else first
 
 
-def run(df: pd.DataFrame, paths: "pilot.Paths", llm: CachedLLM, n_questions: int) -> Dict:
-    items = select_dev(pilot._sample(df, paths), n_questions)
-    assert (items["split"] == "dev").all()
-    rubric_by_q, results, failures = {}, [], []
-    out = {"items": items, "rubrics": rubric_by_q, "results": results, "failures": failures, "stopped": None}
+def run(df: pd.DataFrame, paths: "pilot.Paths", llm: CachedLLM, n_questions: Optional[int] = None) -> Dict:
+    sample = pilot._sample(df, paths)
+    questions = smoke_questions(sample, n_questions)
+    out = {"questions": questions, "stopped": None, "failures": []}
     try:
-        _run(items, paths, llm, out)
+        pilot.stage_rubrics(df, paths, llm, only=questions)
+        pilot.stage_grade(df, paths, llm, offline=False, only=questions)
+        pilot.stage_check(df, paths, llm, only=questions)
     except (BudgetExceeded, QuotaStop) as e:
         out["stopped"] = str(e)  # partial results are still reported
+    except (grader.GradingError, ValueError) as e:
+        out["failures"].append(f"{type(e).__name__}: {e}")
+    out["sample"] = sample[sample["question_id"].isin(questions)]
+    out["rubrics"] = {q: rubrics.load_rubric(pilot._rubric_path(paths, q))
+                      for q in questions if pilot._rubric_path(paths, q).exists()}
+    out["grades"] = pilot._graded(paths).set_index("item_id")
+    check_file = paths.data / "check_grades.csv"
+    out["check"] = pd.read_csv(check_file, dtype={"item_id": str}).set_index("item_id") if check_file.exists() else None
     return out
-
-
-def _run(items: pd.DataFrame, paths: "pilot.Paths", llm: CachedLLM, out: Dict) -> None:
-    rubric_by_q, results, failures = out["rubrics"], out["results"], out["failures"]
-    for q in pilot._questions(items).itertuples():
-        path = paths.rubrics / f"{pilot._safe(q.question_id)}.json"
-        if not path.exists():
-            try:
-                rubric = rubrics.generate_rubric(q.question, q.reference, llm)
-            except (BudgetExceeded, QuotaStop):
-                raise
-            except Exception as e:
-                failures.append(f"rubric {q.question_id}: {type(e).__name__}: {e}")
-                continue
-            key = llm.key(rubrics.generation_prompt(q.question, q.reference), rubrics.GENERATION_SCHEMA, rubrics.GENERATION_SYSTEM)
-            rubrics.save_rubric(path, q.question_id, rubric, llm.model, key)
-        rubric_by_q[q.question_id] = rubrics.load_rubric(path)
-    for row in items.itertuples():
-        if row.question_id not in rubric_by_q:
-            continue
-        try:
-            result = grader.grade_answer(row.question, row.answer, rubric_by_q[row.question_id], llm)
-        except (BudgetExceeded, QuotaStop):
-            raise
-        except Exception as e:
-            failures.append(f"grade {row.item_id}: {type(e).__name__}: {e}")
-            continue
-        checks = {i: evidence_in_answer(quote, row.answer) for i, quote in result["evidence"].items()}
-        results.append({"row": row, "result": result, "checks": checks})
-
-
-def render(out: Dict, show: int) -> str:
-    lines = ["# Smoke test (dev answers only)", ""]
-    if out.get("stopped"):
-        lines += [f"**Partial: stopped before the end ({out['stopped']}).** Re-run to continue from the cache.", ""]
-    n_quotes = sum(1 for r in out["results"] for v in r["checks"].values() if v is not None)
-    missing = [(r["row"].item_id, i) for r in out["results"] for i, v in r["checks"].items() if v is False]
-    lines += [
-        f"- Rubrics: {len(out['rubrics'])}; gradings: {len(out['results'])} of {len(out['items'])} dev answers",
-        f"- Replies that failed to parse or validate: {len(out['failures'])}" + "".join(f"\n  - {f}" for f in out["failures"]),
-        f"- Evidence quotes checked: {n_quotes}; not found in the answer: {len(missing)}"
-        + "".join(f"\n  - {item} {i}" for item, i in missing),
-        "",
-    ]
-    for qid, r in out["rubrics"].items():
-        q = out["items"][out["items"]["question_id"] == qid].iloc[0]
-        lines += [f"## Rubric {qid}", "", f"**Question:** {q['question']}", "", f"**Reference:** {q['reference']}", ""]
-        lines += [f"- {k['id']}: {k['text']}" for k in r["key_points"]]
-        lines += [f"- {m['id']} (misconception): {m['text']}" for m in r["misconceptions"]]
-        lines.append("")
-    for g in out["results"][:show]:
-        row, res = g["row"], g["result"]
-        lines += [f"## Grading {row.item_id}", "", f"**Answer:** {row.answer}", "",
-                  f"**Rubric score:** {res['score']:.1f} / 100 · **human score_avg:** {row.score:g} / 5 (label: {row.label})", "",
-                  "| Item | Mark | Evidence | Quote found |", "|---|---|---|---|"]
-        rubric = out["rubrics"][row.question_id]
-        for k, mark in zip(rubric["key_points"], res["key_point_scores"]):
-            lines.append(f"| {k['id']} | {mark} | {res['evidence'][k['id']] or '—'} | {_mark(g['checks'][k['id']])} |")
-        for m in rubric["misconceptions"]:
-            present = ("present" if m["id"] in res["misconceptions_present"]
-                       else "flagged, no verbatim quote: not counted" if m["id"] in res.get("misconceptions_rejected", []) else "no")
-            lines.append(f"| {m['id']} | {present} | {res['evidence'][m['id']] or '—'} | {_mark(g['checks'][m['id']])} |")
-        lines.append("")
-    if len(out["results"]) > show:
-        lines += ["## All gradings", "", "| Item | Marks | Misconceptions | Rubric score | score_avg |", "|---|---|---|---|---|"]
-        for g in out["results"]:
-            lines.append(f"| {g['row'].item_id} | {g['result']['key_point_scores']} | {g['result']['misconceptions_present'] or '—'} "
-                         f"| {g['result']['score']:.1f} | {g['row'].score:g} |")
-    return "\n".join(lines) + "\n"
 
 
 def _mark(found: Optional[bool]) -> str:
     return "—" if found is None else "yes" if found else "**NO**"
 
 
+def render(out: Dict) -> str:
+    sample, grades = out["sample"], out["grades"]
+    dev = sample[(sample["split"] == "dev") & sample["item_id"].isin(grades.index)].sort_values("item_id")
+    graded_all = sample["item_id"].isin(grades.index).sum()
+    kp_rej = sum(len(json.loads(grades.loc[i, "key_points_rejected"])) for i in dev["item_id"])
+    m_rej = sum(len(json.loads(grades.loc[i, "misconceptions_rejected"])) for i in dev["item_id"])
+    lines = ["# Smoke test: rubric batch 0 (dev answers shown)", ""]
+    if out["stopped"]:
+        lines += [f"**Partial: stopped before the end ({out['stopped']}).** Re-run to continue from the cache.", ""]
+    lines += [
+        f"- Questions: {len(out['questions'])}; rubrics made: {len(out['rubrics'])}",
+        f"- Answers graded in these questions' calls: {graded_all} of {len(sample)} "
+        f"({len(dev)} dev shown; test grades stored, not shown)",
+        f"- Replies that failed to parse or validate: {len(out['failures'])}" + "".join(f"\n  - {f}" for f in out["failures"]),
+        f"- Dev answers: key-point marks set to 0 for lack of a verbatim quote: {kp_rej}; "
+        f"misconception flags not counted for lack of a verbatim quote: {m_rej}",
+        "",
+    ]
+    for qid, r in out["rubrics"].items():
+        q = sample[sample["question_id"] == qid].iloc[0]
+        lines += [f"## Rubric {qid}", "", f"**Question:** {q['question']}", "", f"**Reference:** {q['reference']}", ""]
+        lines += [f"- {k['id']}: {k['text']}" for k in r["key_points"]]
+        lines += [f"- {m['id']} (misconception): {m['text']}" for m in r["misconceptions"]]
+        lines.append("")
+    lines += ["## Dev gradings", "", "| Answer | Marks (K1..) | Misconceptions | Rubric score | score_avg (0-5) |",
+              "|---|---|---|---|---|"]
+    for row in dev.itertuples():
+        g = grades.loc[row.item_id]
+        lines.append(f"| {row.item_id} | {json.loads(g['key_point_scores'])} | {json.loads(g['misconceptions_present']) or '—'} "
+                     f"| {float(g['rubric_score']):.1f} | {row.score:g} |")
+    lines.append("")
+    for row in dev.itertuples():
+        g = grades.loc[row.item_id]
+        rubric = out["rubrics"][row.question_id]
+        evidence = json.loads(g["evidence"])
+        raw = json.loads(g["key_point_scores_raw"])
+        marks = json.loads(g["key_point_scores"])
+        rejected_m = json.loads(g["misconceptions_rejected"])
+        lines += [f"### {row.item_id} (batch {g['batch_label']} of {int(g['batch_size'])})", "", f"**Answer:** {row.answer}", "",
+                  f"**Rubric score:** {float(g['rubric_score']):.1f} / 100 · **human score_avg:** {row.score:g} / 5", "",
+                  "| Item | Mark | Evidence | Verbatim in answer |", "|---|---|---|---|"]
+        for k, m_raw, m in zip(rubric["key_points"], raw, marks):
+            shown = f"{m}" if m == m_raw else f"{m} (model gave {m_raw})"
+            lines.append(f"| {k['id']} | {shown} | {evidence.get(k['id']) or '—'} | {_mark(evidence_in_answer(evidence.get(k['id'], ''), row.answer))} |")
+        for m in rubric["misconceptions"]:
+            state = ("present" if m["id"] in json.loads(g["misconceptions_present"])
+                     else "flagged, not counted" if m["id"] in rejected_m else "no")
+            lines.append(f"| {m['id']} | {state} | {evidence.get(m['id']) or '—'} | {_mark(evidence_in_answer(evidence.get(m['id'], ''), row.answer))} |")
+        lines.append("")
+    if out["check"] is not None:
+        lines += ["## Batching check (answers in these questions)", "", "| Answer | Batched | Single |", "|---|---|---|"]
+        for item_id, c in out["check"].iterrows():
+            if item_id in grades.index and item_id in set(sample["item_id"]):
+                lines.append(f"| {item_id} | {float(grades.loc[item_id, 'rubric_score']):.1f} | {float(c['rubric_score']):.1f} |")
+    return "\n".join(lines) + "\n"
+
+
 def main(argv: Optional[List[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="Smoke test on a few dev answers.")
+    parser = argparse.ArgumentParser(description="Smoke test on rubric batch 0.")
     parser.add_argument("--dataset", required=True, choices=sorted(datasets.LOADERS))
     parser.add_argument("--data", type=Path)
-    parser.add_argument("--questions", type=int, default=3)
-    parser.add_argument("--show", type=int, default=5, help="gradings shown in full")
+    parser.add_argument("--questions", type=int, help="grade only the first N questions of the batch")
     parser.add_argument("--max-calls", type=int, default=0)
     parser.add_argument("--min-interval", type=float, default=4.0)
     args = parser.parse_args(argv)
@@ -138,12 +133,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     print("Tokens (new calls): " + ", ".join(f"{k.replace('_token_count', '')} {v}" for k, v in tokens.items()))
     if out["stopped"]:
         print(f"Stopped: {out['stopped']}", file=sys.stderr)
-    report = render(out, args.show)
     target = paths.data / "smoke.md"
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(report, encoding="utf-8")
+    target.write_text(render(out), encoding="utf-8")
     print(f"Report: {target}")
-    return 2 if out["stopped"] else 0 if not out["failures"] else 1
+    return 2 if out["stopped"] else 1 if out["failures"] else 0
 
 
 if __name__ == "__main__":
