@@ -1,0 +1,24 @@
+{
+  "question_id": "E01.Q01",
+  "generated_from": "question + reference answer only",
+  "model": "gemini-3.8-flash",
+  "prompt_key": "6fb8a57a8f020a6deccd4ac484b141be98cca46066fa21efbfc538a6a4472347",
+  "scale": {
+    "0": "missing or wrong",
+    "1": "partly stated or vague",
+    "2": "clearly and correctly stated"
+  },
+  "key_points": [
+    {
+      "id": "K1",
+      "text": "Simulate the behaviour of portions of the desired software product."
+    }
+  ],
+  "misconceptions": [
+    {
+      "id": "M1",
+      "text": "A prototype is meant to be the complete, fully functioning final software product rather than simulating portions of it."
+    }
+  ],
+  "batch": 0
+}

@@ -339,7 +339,7 @@ def stage_check(df: pd.DataFrame, paths: Paths, llm: CachedLLM, only: Optional[L
         "| Answer | Batched | Single | Difference | Key-point marks equal |", "|---|---|---|---|---|",
     ] + [f"| {r.item_id} | {r.batched_score:.1f} | {r.single_score:.1f} | {r.difference:+.1f} | {r.key_point_marks_equal}/{r.key_points} |"
          for r in table.itertuples()]
-    (paths.results / "batch_check.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    (paths.results / f"batch_check_{GRADER_VERSION}.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines[:7]))
     return table
 

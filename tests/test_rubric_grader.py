@@ -254,7 +254,7 @@ def test_pilot_stages_use_batches_and_resume(tmp_path, monkeypatch):
     assert len(table) == 10 and llm.calls == 10 and set(table["difference"]) == {25.0}  # batched 50, single 25
     ids = pd.read_csv(paths.results / "batch_check_ids.csv")["item_id"]
     assert set(pilot._sample(df, paths).set_index("item_id").loc[ids, "split"]) == {"dev"}
-    md = (paths.results / "batch_check.md").read_text(encoding="utf-8")
+    md = (paths.results / f"batch_check_{pilot.GRADER_VERSION}.md").read_text(encoding="utf-8")
     assert "Mean absolute score difference: 25.0" in md
     assert pilot.stage_plan(df, paths, llm, offline=False)["total_calls"] == 0
 

@@ -1,0 +1,24 @@
+{
+  "question_id": "E01.Q07",
+  "generated_from": "question + reference answer only",
+  "model": "gemini-3.8-flash",
+  "prompt_key": "6fb8a57a8f020a6deccd4ac484b141be98cca46066fa21efbfc538a6a4472347",
+  "scale": {
+    "0": "missing or wrong",
+    "1": "partly stated or vague",
+    "2": "clearly and correctly stated"
+  },
+  "key_points": [
+    {
+      "id": "K1",
+      "text": "The block inside a do ... while statement will execute at least once (unlike a while statement)."
+    }
+  ],
+  "misconceptions": [
+    {
+      "id": "M1",
+      "text": "A do ... while loop checks its condition before entering the loop block, just like a while loop."
+    }
+  ],
+  "batch": 0
+}

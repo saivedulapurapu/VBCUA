@@ -1,0 +1,28 @@
+{
+  "question_id": "E02.Q01",
+  "generated_from": "question + reference answer only",
+  "model": "gemini-3.8-flash",
+  "prompt_key": "6fb8a57a8f020a6deccd4ac484b141be98cca46066fa21efbfc538a6a4472347",
+  "scale": {
+    "0": "missing or wrong",
+    "1": "partly stated or vague",
+    "2": "clearly and correctly stated"
+  },
+  "key_points": [
+    {
+      "id": "K1",
+      "text": "Data members (attributes)."
+    },
+    {
+      "id": "K2",
+      "text": "Member functions."
+    }
+  ],
+  "misconceptions": [
+    {
+      "id": "M1",
+      "text": "A class definition can only contain data/variables and cannot include member functions."
+    }
+  ],
+  "batch": 0
+}

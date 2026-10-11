@@ -1,0 +1,28 @@
+{
+  "question_id": "E02.Q02",
+  "generated_from": "question + reference answer only",
+  "model": "gemini-3.8-flash",
+  "prompt_key": "6fb8a57a8f020a6deccd4ac484b141be98cca46066fa21efbfc538a6a4472347",
+  "scale": {
+    "0": "missing or wrong",
+    "1": "partly stated or vague",
+    "2": "clearly and correctly stated"
+  },
+  "key_points": [
+    {
+      "id": "K1",
+      "text": "Data members can be accessed from any member function inside the class definition."
+    },
+    {
+      "id": "K2",
+      "text": "Local variables can only be accessed inside the specific member function that defines them."
+    }
+  ],
+  "misconceptions": [
+    {
+      "id": "M1",
+      "text": "Local variables defined inside a member function are accessible by all other member functions of the class."
+    }
+  ],
+  "batch": 0
+}
