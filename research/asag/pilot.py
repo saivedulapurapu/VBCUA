@@ -193,7 +193,8 @@ def stage_grade(df: pd.DataFrame, paths: Paths, llm: CachedLLM, offline: bool) -
             result = grade(row.question, row.answer, rubrics.load_rubric(rubric_file), llm)
             rows.append({"item_id": row.item_id, "rubric_score": result["score"],
                          "key_point_scores": json.dumps(result["key_point_scores"]),
-                         "misconceptions_present": json.dumps(result["misconceptions_present"])})
+                         "misconceptions_present": json.dumps(result["misconceptions_present"]),
+                         "evidence": json.dumps(result.get("evidence", {}), ensure_ascii=False)})
     finally:
         # Saved even when the run stops on quota or budget, so the next run resumes
         pd.DataFrame(rows).to_csv(paths.grades, index=False)
