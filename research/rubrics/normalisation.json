@@ -1,0 +1,52 @@
+{
+  "status": "DRAFT – NOT FACULTY REVIEWED",
+  "id": "normalisation",
+  "concept": "Database normalisation",
+  "audience": "undergraduate computer science; spoken explanation of 1-3 minutes",
+  "scale": {
+    "0": "missing or wrong",
+    "1": "partly stated or vague",
+    "2": "clearly and correctly stated"
+  },
+  "key_points": [
+    {
+      "id": "K1",
+      "text": "Normalisation organises the columns and tables of a relational database to reduce redundant (duplicated) data.",
+      "partial_if": "says it 'organises' or 'cleans' the data without mentioning redundancy or duplication"
+    },
+    {
+      "id": "K2",
+      "text": "Redundancy causes update, insertion and deletion anomalies (e.g. changing a fact in one row but not another), and normalisation prevents them.",
+      "partial_if": "says data can become inconsistent but names no anomaly or example"
+    },
+    {
+      "id": "K3",
+      "text": "Tables are decomposed into smaller related tables linked by primary and foreign keys, without losing information (the original data can be rebuilt with joins).",
+      "partial_if": "says tables are split but does not mention keys or that nothing is lost"
+    },
+    {
+      "id": "K4",
+      "text": "Normal forms are successive levels based on functional dependencies; at least one is described correctly (1NF: atomic values, no repeating groups; 2NF: no partial dependency on part of a composite key; 3NF: no transitive dependency between non-key attributes).",
+      "partial_if": "names normal forms (1NF/2NF/3NF) but does not describe what any of them requires, or describes one only loosely"
+    },
+    {
+      "id": "K5",
+      "text": "Trade-off: a highly normalised design needs more joins, which can slow some reads, so designs are sometimes deliberately denormalised for performance.",
+      "partial_if": "mentions that there is a cost but not what it is"
+    }
+  ],
+  "misconceptions": [
+    {
+      "id": "M1",
+      "text": "The main purpose of normalisation is to make queries run faster."
+    },
+    {
+      "id": "M2",
+      "text": "Database normalisation means scaling numeric values into a fixed range such as 0 to 1 (confusing it with data or feature normalisation)."
+    },
+    {
+      "id": "M3",
+      "text": "A database should always be normalised to the highest normal form possible."
+    }
+  ]
+}

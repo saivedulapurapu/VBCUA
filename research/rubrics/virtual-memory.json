@@ -1,0 +1,57 @@
+{
+  "status": "DRAFT – NOT FACULTY REVIEWED",
+  "id": "virtual-memory",
+  "concept": "Virtual memory",
+  "audience": "undergraduate computer science; spoken explanation of 1-3 minutes",
+  "scale": {
+    "0": "missing or wrong",
+    "1": "partly stated or vague",
+    "2": "clearly and correctly stated"
+  },
+  "key_points": [
+    {
+      "id": "K1",
+      "text": "Virtual memory gives each process its own private, contiguous virtual address space that is independent of the size and layout of physical RAM.",
+      "partial_if": "says programs 'think they have more memory' without the per-process address space"
+    },
+    {
+      "id": "K2",
+      "text": "Virtual addresses are translated to physical addresses by the MMU (hardware) using page tables kept by the OS; a TLB caches recent translations.",
+      "partial_if": "mentions translation or page tables but not who does it, or the TLB alone"
+    },
+    {
+      "id": "K3",
+      "text": "Paging: memory is divided into fixed-size pages (virtual) and frames (physical); only the pages in use need to be in RAM, the rest can stay on disk (swap / backing store), loaded on demand.",
+      "partial_if": "mentions pages or disk storage without explaining that only needed pages are in RAM"
+    },
+    {
+      "id": "K4",
+      "text": "A page fault happens when a process touches a page not in RAM; the OS loads it from disk, evicting another page with a replacement policy (e.g. LRU) if RAM is full.",
+      "partial_if": "mentions page faults by name only"
+    },
+    {
+      "id": "K5",
+      "text": "Benefits: programs larger than RAM and more processes can run, processes are isolated and protected from each other, and memory such as shared libraries can be shared.",
+      "partial_if": "names only one benefit"
+    },
+    {
+      "id": "K6",
+      "text": "Cost: disk is far slower than RAM, so too many page faults cause thrashing, where the system spends most of its time paging.",
+      "partial_if": "says it 'can be slow' without the reason"
+    }
+  ],
+  "misconceptions": [
+    {
+      "id": "M1",
+      "text": "Virtual memory is just the swap or page file, i.e. using the hard disk as extra RAM."
+    },
+    {
+      "id": "M2",
+      "text": "Virtual memory makes the computer faster or makes RAM faster."
+    },
+    {
+      "id": "M3",
+      "text": "Virtual addresses are the same as physical addresses, or all processes share one address space."
+    }
+  ]
+}

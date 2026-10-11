@@ -1,0 +1,57 @@
+{
+  "status": "DRAFT – NOT FACULTY REVIEWED",
+  "id": "overfitting",
+  "concept": "Overfitting",
+  "audience": "undergraduate computer science; spoken explanation of 1-3 minutes",
+  "scale": {
+    "0": "missing or wrong",
+    "1": "partly stated or vague",
+    "2": "clearly and correctly stated"
+  },
+  "key_points": [
+    {
+      "id": "K1",
+      "text": "Overfitting is when a model learns the training data too closely, including its noise and random quirks, instead of the general pattern.",
+      "partial_if": "says the model 'memorises' the data without contrasting it with the general pattern"
+    },
+    {
+      "id": "K2",
+      "text": "Symptom: very good performance on the training data but clearly worse performance on new, unseen data (poor generalisation).",
+      "partial_if": "mentions only good training accuracy or only poor test accuracy, not the gap"
+    },
+    {
+      "id": "K3",
+      "text": "Causes: a model that is too complex for the amount of data (too many parameters or features), too little or noisy training data, or training for too long.",
+      "partial_if": "names one cause vaguely, e.g. 'too much training'"
+    },
+    {
+      "id": "K4",
+      "text": "Detection: compare training error with error on a held-out validation or test set, or use cross-validation; validation error rising while training error falls is the sign.",
+      "partial_if": "says 'use test data' without explaining what to compare"
+    },
+    {
+      "id": "K5",
+      "text": "Remedies: more data or data augmentation, a simpler model or fewer features, regularisation (e.g. L1/L2, dropout), early stopping, pruning.",
+      "partial_if": "names only one remedy, or remedies without how they help"
+    },
+    {
+      "id": "K6",
+      "text": "Contrast with underfitting (too simple, poor on both training and test data); overfitting corresponds to high variance in the bias-variance trade-off.",
+      "partial_if": "mentions underfitting without explaining the difference"
+    }
+  ],
+  "misconceptions": [
+    {
+      "id": "M1",
+      "text": "Overfitting means the model performs poorly on its training data (this is underfitting)."
+    },
+    {
+      "id": "M2",
+      "text": "Higher training accuracy always means a better model, so training longer always helps."
+    },
+    {
+      "id": "M3",
+      "text": "Checking accuracy on the training data is enough to detect overfitting."
+    }
+  ]
+}

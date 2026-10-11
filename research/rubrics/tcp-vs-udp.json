@@ -1,0 +1,57 @@
+{
+  "status": "DRAFT – NOT FACULTY REVIEWED",
+  "id": "tcp-vs-udp",
+  "concept": "TCP vs UDP",
+  "audience": "undergraduate computer science; spoken explanation of 1-3 minutes",
+  "scale": {
+    "0": "missing or wrong",
+    "1": "partly stated or vague",
+    "2": "clearly and correctly stated"
+  },
+  "key_points": [
+    {
+      "id": "K1",
+      "text": "Both are transport-layer protocols that run over IP and use port numbers to reach applications.",
+      "partial_if": "says they are 'network protocols' without the transport layer or ports"
+    },
+    {
+      "id": "K2",
+      "text": "TCP is connection-oriented (a three-way handshake sets up a connection); UDP is connectionless and just sends datagrams.",
+      "partial_if": "says TCP 'connects' and UDP does not, with no detail"
+    },
+    {
+      "id": "K3",
+      "text": "TCP gives reliable, ordered delivery using sequence numbers, acknowledgements and retransmission; UDP is best effort, with no guarantee of delivery, order or duplicate removal.",
+      "partial_if": "says TCP is 'reliable' and UDP is 'unreliable' without saying how or what is guaranteed"
+    },
+    {
+      "id": "K4",
+      "text": "TCP has flow control and congestion control; UDP has neither.",
+      "partial_if": "mentions one of the two, or 'TCP controls the speed' vaguely"
+    },
+    {
+      "id": "K5",
+      "text": "UDP has lower overhead (8-byte header vs at least 20 bytes, no handshake, no waiting for retransmissions), so lower latency; TCP is a byte stream, UDP keeps message boundaries.",
+      "partial_if": "says UDP is 'faster' or 'lighter' without the reason"
+    },
+    {
+      "id": "K6",
+      "text": "Typical uses: TCP for the web, email and file transfer; UDP for DNS, live audio/video, VoIP and online games, where timeliness matters more than perfect delivery.",
+      "partial_if": "gives uses for only one protocol, or examples without the reason"
+    }
+  ],
+  "misconceptions": [
+    {
+      "id": "M1",
+      "text": "UDP is less secure than TCP (neither protocol encrypts data; security comes from TLS, DTLS and similar)."
+    },
+    {
+      "id": "M2",
+      "text": "UDP packets travel through the network faster than TCP packets."
+    },
+    {
+      "id": "M3",
+      "text": "TCP guarantees that data always arrives, even if the connection breaks."
+    }
+  ]
+}
