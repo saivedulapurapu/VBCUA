@@ -13,6 +13,7 @@ the manifest). Noisy versions are made from the saved clip on the fly, determini
 (seeded by clip and condition), and are not stored.
 
     python -m research.asr.audio listen      # listening-check clips for the four Hindi-L1 speakers
+    python -m research.asr.audio synth       # clean clips: 200 test answers x 3 voices (resumable)
 """
 import argparse
 import hashlib
@@ -32,8 +33,9 @@ SAMPLE_RATE = 16_000  # what Whisper uses
 
 # L2-ARCTIC speakers whose first language is Hindi, with their ids in the Piper model
 HINDI_L1_SPEAKERS = {"SVBI": 2, "TNI": 9, "ASI": 10, "RRBI": 19}  # SVBI, TNI female; ASI, RRBI male
-# Set after the listening check (chosen before any transcription)
-INDIAN_SPEAKER: Optional[str] = None
+# Chosen by ear from the four Hindi-L1 candidates (listening check, 5 dev answers each),
+# before any transcription was run
+INDIAN_SPEAKER: Optional[str] = "TNI"
 
 VOICES = {
     "indian": {"model": "en_US-l2arctic-medium", "speaker": None},  # speaker = HINDI_L1_SPEAKERS[INDIAN_SPEAKER]
@@ -182,12 +184,67 @@ def make_listening_clips(out_dir: Path = TTS_DIR / "listening_check") -> Path:
     return out_dir
 
 
+# ---------------------------------------------------------------- clean clips for the test answers
+CLEAN_DIR = TTS_DIR / "clean"
+MANIFEST = TTS_DIR / "manifest.csv"
+
+
+def clip_id(item_id: str, voice: str) -> str:
+    return f"{item_id}|{voice}"
+
+
+def clip_path(item_id: str, voice: str, root: Path = CLEAN_DIR) -> Path:
+    return root / voice / f"{item_id}.wav"
+
+
+def test_answers():
+    """The 200 Mohler test answers of the fixed split (item_id, question_id, answer)."""
+    from research.asag import datasets, pilot
+
+    df = datasets.load("mohler", ROOT / "research" / "data" / "mohler")
+    sample = pilot._sample(df, pilot.Paths("mohler"))
+    return sample[sample["split"] == "test"].sort_values("item_id").reset_index(drop=True)
+
+
+def make_clean_clips(answers, voices=tuple(VOICES), root: Path = CLEAN_DIR, manifest: Path = MANIFEST, synth=None):
+    """
+    Synthesises every (answer, voice) once; existing clips are kept (resumable). Writes a manifest
+    with the clip's duration and SHA-256. synth(text, voice) replaces Piper in tests.
+    """
+    import time
+
+    import pandas as pd
+
+    synth = synth or synthesize
+    rows = pd.read_csv(manifest, dtype=str).to_dict("records") if manifest.exists() else []
+    have = {(r["item_id"], r["voice"]) for r in rows}
+    started, made = time.perf_counter(), 0
+    try:
+        for voice in voices:
+            for a in answers.itertuples():
+                if (a.item_id, voice) in have and clip_path(a.item_id, voice, root).exists():
+                    continue
+                speech = synth(a.answer, voice)
+                digest = write_wav(clip_path(a.item_id, voice, root), speech)
+                rows.append({"item_id": a.item_id, "voice": voice, "piper_model": VOICES[voice]["model"],
+                             "speaker": INDIAN_SPEAKER if voice == "indian" else "",
+                             "seconds": f"{len(speech) / SAMPLE_RATE:.2f}", "sha256": digest})
+                made += 1
+    finally:
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(rows).to_csv(manifest, index=False)
+    return {"made": made, "total": len(rows), "seconds": time.perf_counter() - started}
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Synthetic speech for RQ2.")
-    parser.add_argument("command", choices=["listen"])
+    parser.add_argument("command", choices=["listen", "synth"])
     args = parser.parse_args(argv)
     if args.command == "listen":
         print(f"Listening-check clips in {make_listening_clips()}")
+    if args.command == "synth":
+        result = make_clean_clips(test_answers())
+        print(f"Clean clips: {result['made']} new, {result['total']} in the manifest, {result['seconds']:.0f} s")
     return 0
 
 

@@ -50,6 +50,19 @@ python -m research.asag.pilot report  --dataset mohler --data research/data/mohl
 - **Calls are capped:** `--max-calls` limits the new Gemini calls per run, and the default 0 makes none. Every answer is cached in `research/data/llm_cache/`, keyed by (model, prompt hash), at temperature 0.
 - **Free-tier keys:** run `rubrics` / `grade` once a day with `--max-calls` at or below the daily quota. Each run resumes where the last one stopped. A run also stops cleanly when the daily quota is used up.
 
+## RQ2: robustness to speech-recognition errors
+
+The 200 test answers are spoken by 3 synthetic voices (Indian English, British, US) under 3
+conditions (clean, cafeteria noise at 20 dB and 5 dB SNR) and transcribed by Whisper tiny, base
+and small, in the same way the app transcribes (1,800 jobs per model).
+
+```
+python -m research.asr.audio listen          # listening-check clips (done; TNI chosen)
+python -m research.asr.audio synth           # 600 clean clips + manifest with SHA-256
+python -m research.asr.transcribe time       # 20 jobs per model, full-run estimate
+python -m research.asr.transcribe run --models small base tiny
+```
+
 ## Citations
 
 Mohler, M., Bunescu, R., and Mihalcea, R. (2011). Learning to Grade Short Answer Questions using
@@ -68,8 +81,10 @@ none of it is redistributed. Used for non-commercial academic research only.
 
 - **Piper** text-to-speech, `piper-tts` 1.8.0 (Open Home Foundation, <https://github.com/OHF-Voice/piper1-gpl>),
   GPL-3.0-or-later. Voice models from <https://huggingface.co/rhasspy/piper-voices>:
-  - `en_US-l2arctic-medium`: trained on L2-ARCTIC, licence CC BY-NC 4.0. One of its Hindi-L1
-    speakers (ASI, RRBI, SVBI or TNI) is the Indian-English voice.
+  - `en_US-l2arctic-medium`: trained on L2-ARCTIC, licence CC BY-NC 4.0. Its speaker **TNI**
+    (female, Hindi L1) is the Indian-English voice. TNI was chosen by ear from the 4 Hindi-L1
+    candidates (ASI, RRBI, SVBI, TNI), each reading the same 5 dev answers, **before any
+    transcription was run**, so the choice could not depend on Whisper's results.
   - `en_GB-alba-medium`: trained on the Alba (Scottish English) corpus,
     <https://datashare.ed.ac.uk/handle/10283/3270>, licence CC BY 4.0.
   - `en_US-ryan-medium`: trained on RyanSpeech, <https://www.kaggle.com/datasets/roholazandie/ryanspeech>,

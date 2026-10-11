@@ -63,3 +63,28 @@ def test_indian_voice_needs_a_chosen_speaker(monkeypatch):
         audio.speaker_id("indian")
     assert audio.speaker_id("indian", "ASI") == 10 and audio.speaker_id("british") is None
     assert set(audio.HINDI_L1_SPEAKERS) == {"SVBI", "TNI", "ASI", "RRBI"}
+
+
+def test_tni_is_the_indian_voice():
+    assert audio.INDIAN_SPEAKER == "TNI" and audio.speaker_id("indian") == 9
+
+
+def test_make_clean_clips_is_resumable(tmp_path):
+    import pandas as pd
+
+    answers = pd.DataFrame({"item_id": ["E01.Q01.A00", "E01.Q01.A01"], "answer": ["one two", "three"]})
+    calls = []
+
+    def fake(text, voice):
+        calls.append((text, voice))
+        return tone(0.5)
+
+    manifest = tmp_path / "manifest.csv"
+    first = audio.make_clean_clips(answers, root=tmp_path / "clean", manifest=manifest, synth=fake)
+    assert first["made"] == 6 and len(calls) == 6
+    m = pd.read_csv(manifest)
+    assert set(m["voice"]) == {"indian", "british", "us"} and (m["seconds"] == 0.5).all()
+    assert set(m.loc[m["voice"] == "indian", "speaker"]) == {"TNI"}
+    assert (tmp_path / "clean" / "us" / "E01.Q01.A01.wav").exists()
+    again = audio.make_clean_clips(answers, root=tmp_path / "clean", manifest=manifest, synth=fake)
+    assert again["made"] == 0 and len(calls) == 6 and again["total"] == 6
