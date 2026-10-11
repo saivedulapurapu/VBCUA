@@ -7,7 +7,7 @@ better than the Sentence-BERT cosine score?). The app itself is in `backend/` an
 |---|---|
 | `evaluate.py` | Agreement metrics with 95% bootstrap CIs (1000 resamples, seed 42): QWK, Spearman, accuracy, confusion matrices; Pearson, Spearman, RMSE for numeric scores |
 | `asag/` | Short-answer grading pilot: one loader per dataset, stratified split, cached Gemini calls, rubric generation, rubric grader, report |
-| `asr/` | RQ2: synthetic speech (Piper TTS), cafeteria noise, Whisper transcription |
+| `asr/` | RQ2: synthetic speech (Piper TTS), cafeteria noise, Whisper transcription; `self_recordings.py` for own spoken explanations of the six rubric concepts (rated by hand before any scoring) |
 | `rubrics/` | Draft rubrics for six concepts (**DRAFT – NOT FACULTY REVIEWED**) and the review document generated from them |
 | `results/` | Committed outputs: split IDs, generated rubrics, fitted cut-offs, metric tables. No dataset text or labels |
 | `data/` | Datasets, per-answer predictions and the LLM cache. **Git-ignored, never committed** |
