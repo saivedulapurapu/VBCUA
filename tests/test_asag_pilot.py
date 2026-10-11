@@ -84,6 +84,15 @@ def test_mohler_hf_loader(tmp_path):
     assert list(df["score_grader_1"]) == [5.0, 1.0, 4.0] and list(df["score_grader_2"]) == [4.0, 2.0, 3.0]
 
 
+def test_mohler_parser_tokens_become_brackets():
+    clean = datasets._clean_mohler_text
+    assert clean("inside a function -LRB- local variables -RRB- or outside <STOP>") == \
+        "inside a function (local variables) or outside"
+    assert clean("a -LSB- i -RSB- and -LCB- x -RCB-") == "a [i] and {x}"
+    assert clean("f -LRB- g -LRB- x -RRB- -RRB-") == "f (g (x))"
+    assert not any(t in clean(" ".join(datasets.PTB_BRACKETS)) for t in datasets.PTB_BRACKETS)
+
+
 def test_mohler_cutoffs():
     assert [datasets.mohler_label(s) for s in (0, 2.49, 2.5, 4.49, 4.5, 5)] == [
         "incorrect", "incorrect", "partial", "partial", "correct", "correct"]

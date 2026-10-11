@@ -104,9 +104,22 @@ def mohler_label(score: float, cutoffs: Tuple[float, float] = MOHLER_CUTOFFS) ->
     return "incorrect" if score < low else "partial" if score < high else "correct"
 
 
+# Penn Treebank bracket tokens left by the authors' tokenizer in the cleaned subset
+PTB_BRACKETS = {"-LRB-": "(", "-RRB-": ")", "-LSB-": "[", "-RSB-": "]", "-LCB-": "{", "-RCB-": "}"}
+
+
 def _clean_mohler_text(text: str) -> str:
-    """The cleaned subset marks sentence ends with <STOP>; the text itself is kept as is."""
-    return re.sub(r"\s+", " ", re.sub(r"<STOP>", " ", str(text))).strip()
+    """
+    Undoes the cleaned subset's markup: <STOP> sentence markers become spaces and bracket tokens
+    (-LRB- etc.) become the characters they stand for, without the tokenizer's inner spaces
+    ("f -LRB- x -RRB-" -> "f (x)"). The words themselves are kept as released.
+    """
+    text = re.sub(r"<STOP>", " ", str(text))
+    for token, char in PTB_BRACKETS.items():
+        text = text.replace(token, char)
+    text = re.sub(r"([(\[{])\s+", r"\1", text)
+    text = re.sub(r"\s+([)\]}])", r"\1", text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def load_mohler(path: Path, cutoffs: Tuple[float, float] = MOHLER_CUTOFFS) -> pd.DataFrame:
