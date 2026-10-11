@@ -27,7 +27,9 @@ The implemented API has these routes:
 | GET | `/api/health` | Health check |
 | POST | `/api/concepts` | Create a concept |
 | GET | `/api/concepts` | List concepts |
+| POST | `/api/concepts/generate` | Create a concept for any topic with an AI-written reference |
 | GET | `/api/concepts/{concept_id}` | Get one concept |
+| GET | `/api/discover/trending` | Today's trending topics (Google Search via Gemini, cached daily) or curated topics |
 | POST | `/api/evaluate` | Upload audio and run the evaluation pipeline |
 | GET | `/api/evaluations` | List past attempts |
 | GET | `/api/evaluations/{eval_id}` | Get one attempt |

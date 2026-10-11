@@ -45,3 +45,12 @@ describe('api errors', () => {
     expect((form.get('file') as File).name).toBe('rec.wav')
   })
 })
+
+describe('quota errors', () => {
+  it('explain that the Gemini limit was reached', async () => {
+    respond(429, { detail: 'Gemini quota exhausted for gemini-3.5-flash-lite' })
+    const error = await api.generateConcept('T20 Cricket').catch((e) => e)
+    expect(error.message).toContain('usage limit for your Gemini API key')
+    expect(error.detail).toContain('quota exhausted')
+  })
+})

@@ -8,6 +8,22 @@ export interface Concept {
   created_at?: string
 }
 
+export interface TrendingTopic {
+  title: string
+  category: string
+  why: string
+}
+
+export interface TrendingResponse {
+  date: string
+  /** "google-search" = live trending topics; "curated" = fallback list, never shown as trending */
+  origin: 'google-search' | 'curated'
+  topics: TrendingTopic[]
+  sources: Array<{ title: string; uri: string }>
+  /** Google's search-suggestions HTML, which must be displayed with grounded results */
+  search_entry_point: string | null
+}
+
 export type FeedbackStatus = 'pending' | 'generating' | 'done' | 'failed' | 'unavailable'
 
 /** One stored attempt, as returned by the backend (older rows have nulls for newer fields). */

@@ -9,6 +9,7 @@ import { useElapsed } from './hooks/useElapsed'
 import { useFeedback } from './hooks/useFeedback'
 import { ThemeToggle } from './components/ThemeToggle'
 import { ConceptPicker } from './components/ConceptPicker'
+import { Discover } from './components/Discover'
 import { AddConceptDrawer } from './components/AddConceptDrawer'
 import { ErrorNotice } from './components/ErrorNotice'
 import { Recorder, type AudioInput } from './components/Recorder'
@@ -104,7 +105,7 @@ export default function App() {
           <h1>
             Explain it out loud. <span className="gradient-text">See how well you understand it.</span>
           </h1>
-          <p>Pick a computing concept, explain it in your own words, and get scores and feedback on your understanding and delivery.</p>
+          <p>Pick a concept, a topic in today’s news or anything you like, explain it in your own words, and get scores and feedback on your understanding and delivery.</p>
         </section>
 
         {loadError ? <ErrorNotice error={loadError} /> : null}
@@ -112,9 +113,16 @@ export default function App() {
         <main className="grid">
           <section className="panel glass" aria-labelledby="step-1">
             <h2 className="step-head" id="step-1">
-              <span className="step-num">1</span> Choose a concept
+              <span className="step-num">1</span> Choose a topic
             </h2>
             <ConceptPicker concepts={concepts} selectedId={selectedId} onSelect={selectConcept} />
+            <Discover
+              concepts={concepts}
+              onConcept={(concept) => {
+                setConcepts((list) => (list.some((c) => c.id === concept.id) ? list : [...list, concept]))
+                selectConcept(concept.id)
+              }}
+            />
 
             <hr className="divider" />
             <h2 className="step-head" ref={recorderRef}>
@@ -149,7 +157,7 @@ export default function App() {
               <div className="empty">
                 <Mic size={40} aria-hidden />
                 <h3>No results yet</h3>
-                <p>Choose a concept, record or upload your explanation, then select Analyse.</p>
+                <p>Choose a topic, record or upload your explanation, then select Analyse.</p>
               </div>
             )}
           </section>

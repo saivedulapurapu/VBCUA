@@ -5,11 +5,11 @@ import time
 import uuid
 import logging
 from pathlib import Path
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from datetime import datetime, timedelta
-from sqlalchemy import or_, text
+from sqlalchemy import case, or_, text
 from sqlalchemy.orm import Session
 from typing import List, Optional
 
@@ -18,14 +18,14 @@ from backend.app.config import settings
 from backend.app.database import engine, Base, get_db
 from backend.app.models.concept import ReferenceConcept
 from backend.app.models.evaluation import Evaluation
-from backend.app.schemas.concept import ConceptCreate, ConceptResponse
+from backend.app.schemas.concept import ConceptCreate, ConceptGenerate, ConceptResponse, TrendingResponse
 from backend.app.schemas.evaluation import EvaluationResponse
 
 # Services
 from backend.app.services.speech_to_text import transcribe_audio
 from backend.app.services.audio_analysis import analyze_audio_features
 from backend.app.services.semantic import evaluate_semantic_understanding
-from backend.app.services import llm_client
+from backend.app.services import discover, llm_client
 from backend.app.services.evaluation import (
     FEEDBACK_DONE, FEEDBACK_FAILED, FEEDBACK_GENERATING, FEEDBACK_UNAVAILABLE,
     compute_fluency_score, evaluate_explanation, generate_llm_feedback,
@@ -78,18 +78,30 @@ ADDED_EVALUATION_COLUMNS = {
     "longest_pause_s": "FLOAT",
 }
 
+ADDED_CONCEPT_COLUMNS = {
+    "source": "VARCHAR(20)",
+}
+
+DEFAULT_CONCEPT_TITLES = ("Machine Learning", "Cloud Computing", "Database Management System (DBMS)")
+
+
 def migrate_evaluations_table(session_factory):
     """Dynamic database migration for existing tables (adds columns if missing)."""
-    for column, column_type in ADDED_EVALUATION_COLUMNS.items():
+    migrate_table(session_factory, "evaluations", ADDED_EVALUATION_COLUMNS)
+    migrate_table(session_factory, "reference_concepts", ADDED_CONCEPT_COLUMNS)
+
+
+def migrate_table(session_factory, table: str, columns: dict):
+    for column, column_type in columns.items():
         db = session_factory()
         try:
             # Check if column exists by querying it
-            db.execute(text(f"SELECT {column} FROM evaluations LIMIT 1"))
+            db.execute(text(f"SELECT {column} FROM {table} LIMIT 1"))
         except Exception:
             db.rollback()
-            logger.info(f"Database migration: {column} column missing. Appending it...")
+            logger.info(f"Database migration: {table}.{column} column missing. Appending it...")
             try:
-                db.execute(text(f"ALTER TABLE evaluations ADD COLUMN {column} {column_type}"))
+                db.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}"))
                 db.commit()
                 logger.info(f"Database migration: {column} column successfully added.")
             except Exception as err:
@@ -142,9 +154,16 @@ def startup_db_setup():
                     description="A Database Management System (DBMS) is software designed to store, retrieve, define, and manage data in a database. It serves as an interface between the database and its end-users or programs, ensuring that data is consistently organized and easily accessible. A DBMS enforces data integrity constraints, manages database transactions, supports querying languages like SQL, and handles concurrent access control so multiple users can access the database safely without conflicts."
                 )
             ]
+            for concept in default_concepts:
+                concept.source = "library"
             db.add_all(default_concepts)
             db.commit()
             logger.info("Seeding complete.")
+        # The seeded concepts are the curated library (older databases stored no source)
+        db.query(ReferenceConcept).filter(
+            ReferenceConcept.source.is_(None), ReferenceConcept.title.in_(DEFAULT_CONCEPT_TITLES)
+        ).update({"source": "library"}, synchronize_session=False)
+        db.commit()
     except Exception as e:
         logger.error(f"Error seeding database: {e}")
         db.rollback()
@@ -170,7 +189,8 @@ def create_concept(concept: ConceptCreate, db: Session = Depends(get_db)):
     new_concept = ReferenceConcept(
         title=concept.title,
         keywords=concept.keywords,
-        description=concept.description
+        description=concept.description,
+        source="custom"
     )
     db.add(new_concept)
     db.commit()
@@ -180,7 +200,13 @@ def create_concept(concept: ConceptCreate, db: Session = Depends(get_db)):
 
 @app.get("/api/concepts", response_model=List[ConceptResponse])
 def list_concepts(db: Session = Depends(get_db)):
-    return db.query(ReferenceConcept).order_by(ReferenceConcept.title).all()
+    """Curated library concepts first, then user-added ones, then AI-generated topics; by title within each."""
+    group = case(
+        (ReferenceConcept.source == "ai-generated", 2),
+        (ReferenceConcept.source == "custom", 1),
+        else_=0,
+    )
+    return db.query(ReferenceConcept).order_by(group, ReferenceConcept.title).all()
 
 
 @app.get("/api/concepts/{concept_id}", response_model=ConceptResponse)
@@ -189,6 +215,32 @@ def get_concept(concept_id: int, db: Session = Depends(get_db)):
     if not concept:
         raise HTTPException(status_code=404, detail="Concept not found")
     return concept
+
+
+# Discovery: trending topics and AI-written references for any topic
+
+@app.get("/api/discover/trending", response_model=TrendingResponse)
+def trending_topics(response: Response, db: Session = Depends(get_db)):
+    """Today's trending topics (Gemini + Google Search, cached daily), or curated topics as a fallback."""
+    # Never cached by the browser: curated topics change on every request
+    response.headers["Cache-Control"] = "no-store"
+    return discover.get_trending(db)
+
+
+@app.post("/api/concepts/generate", response_model=ConceptResponse)
+def generate_concept(request: ConceptGenerate, db: Session = Depends(get_db)):
+    """Creates (or returns the existing) concept for any topic, with an AI-written reference and keywords."""
+    try:
+        return discover.generate_concept(db, request.topic)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except llm_client.LLMNotConfigured:
+        raise HTTPException(status_code=503, detail="AI is not configured (GEMINI_API_KEY is missing)")
+    except llm_client.LLMError as e:
+        logger.error(f"Reference generation failed for {request.topic!r}: {e}")
+        if llm_client.is_quota_exhausted(e.__cause__ or e):
+            raise HTTPException(status_code=429, detail=f"Gemini quota exhausted for {settings.GEMINI_DISCOVER_MODEL}: {e}")
+        raise HTTPException(status_code=502, detail=f"Reference generation failed: {e}")
 
 
 # 2. Evaluation Endpoints
