@@ -117,6 +117,24 @@ def status(path: Path = TRANSCRIPTS, jobs_per_model: Optional[int] = None) -> st
     return "\n".join(lines)
 
 
+ES_CONTINUOUS = 0x80000000
+ES_SYSTEM_REQUIRED = 0x00000001
+
+
+def keep_awake(on: bool = True) -> bool:
+    """
+    Windows only: asks the system not to idle into sleep (Modern Standby) while this process runs,
+    like a media player does. Does not change power settings; closing the lid still sleeps.
+    Returns True if the request was made.
+    """
+    if sys.platform != "win32":
+        return False
+    import ctypes
+
+    flags = ES_CONTINUOUS | ES_SYSTEM_REQUIRED if on else ES_CONTINUOUS
+    return bool(ctypes.windll.kernel32.SetThreadExecutionState(flags))
+
+
 def estimate(timed: pd.DataFrame, jobs: pd.DataFrame) -> pd.DataFrame:
     """
     Full-run estimate per model from the timed jobs: mean seconds per job x number of jobs, and
@@ -165,8 +183,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.command == "status":
         print(status(jobs_per_model=len(jobs)))
     if args.command == "run":
-        print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} start: models {args.models}, {len(jobs)} jobs each", flush=True)
-        new = run_jobs(jobs, args.models)
+        print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} start: models {args.models}, {len(jobs)} jobs each; "
+              f"keep-awake {'on' if keep_awake() else 'unavailable'}", flush=True)
+        try:
+            new = run_jobs(jobs, args.models)
+        finally:
+            keep_awake(False)
         print(f"Transcribed {len(new)} new jobs; {len(load_transcripts())} in {TRANSCRIPTS}")
     return 0
 

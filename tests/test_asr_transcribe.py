@@ -69,3 +69,18 @@ def test_status_counts_per_model(tmp_path):
     assert lines == ["whisper-tiny: 0/1800 done, 0 min of transcription so far",
                      "whisper-base: 0/1800 done, 0 min of transcription so far",
                      "whisper-small: 1/1800 done, 2 min of transcription so far"]
+
+
+def test_keep_awake_flags(monkeypatch):
+    import sys
+    import types
+
+    if sys.platform != "win32":
+        assert transcribe.keep_awake() is False
+        return
+    calls = []
+    fake = types.SimpleNamespace(windll=types.SimpleNamespace(kernel32=types.SimpleNamespace(
+        SetThreadExecutionState=lambda flags: calls.append(flags) or 1)))
+    monkeypatch.setitem(sys.modules, "ctypes", fake)
+    assert transcribe.keep_awake() and transcribe.keep_awake(False)
+    assert calls == [0x80000001, 0x80000000]
