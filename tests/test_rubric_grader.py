@@ -257,3 +257,14 @@ def test_pilot_stages_use_batches_and_resume(tmp_path, monkeypatch):
     md = (paths.results / "batch_check.md").read_text(encoding="utf-8")
     assert "Mean absolute score difference: 25.0" in md
     assert pilot.stage_plan(df, paths, llm, offline=False)["total_calls"] == 0
+
+
+def test_prompt_v2_counts_paraphrases_and_versions_the_cache(tmp_path):
+    assert grader.PROMPT_VERSION == "v2"
+    prompt = grader.build_prompt("Q", "A", RUBRIC)
+    assert "in any wording (a paraphrase counts)" in prompt and "absent or wrong" in prompt
+    assert "quote the student's own paraphrasing words" in prompt
+    llm, _ = llm_with(tmp_path, reply())
+    grader.grade_answer("Q", ANSWER, RUBRIC, llm)
+    key_v2 = llm.key(grader.build_prompt("Q", ANSWER, RUBRIC), grader.SCHEMA, grader.SYSTEM, "v2")
+    assert (tmp_path / "m1" / f"{key_v2}.json").exists()

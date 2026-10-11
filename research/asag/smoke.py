@@ -50,7 +50,10 @@ def run(df: pd.DataFrame, paths: "pilot.Paths", llm: CachedLLM, n_questions: Opt
     out["rubrics"] = {q: rubrics.load_rubric(pilot._rubric_path(paths, q))
                       for q in questions if pilot._rubric_path(paths, q).exists()}
     out["grades"] = pilot._graded(paths).set_index("item_id")
-    check_file = paths.data / "check_grades.csv"
+    v1_file = paths.data / "grades_v1.csv"
+    out["grades_v1"] = (pd.read_csv(v1_file, dtype={"item_id": str}).set_index("item_id")
+                        if v1_file.exists() and pilot.GRADER_VERSION != "v1" else None)
+    check_file = paths.check_grades
     out["check"] = pd.read_csv(check_file, dtype={"item_id": str}).set_index("item_id") if check_file.exists() else None
     return out
 
@@ -65,7 +68,7 @@ def render(out: Dict) -> str:
     graded_all = sample["item_id"].isin(grades.index).sum()
     kp_rej = sum(len(json.loads(grades.loc[i, "key_points_rejected"])) for i in dev["item_id"])
     m_rej = sum(len(json.loads(grades.loc[i, "misconceptions_rejected"])) for i in dev["item_id"])
-    lines = ["# Smoke test: rubric batch 0 (dev answers shown)", ""]
+    lines = [f"# Smoke test: rubric batch 0, grader prompt {pilot.GRADER_VERSION} (dev answers shown)", ""]
     if out["stopped"]:
         lines += [f"**Partial: stopped before the end ({out['stopped']}).** Re-run to continue from the cache.", ""]
     lines += [
@@ -83,12 +86,18 @@ def render(out: Dict) -> str:
         lines += [f"- {k['id']}: {k['text']}" for k in r["key_points"]]
         lines += [f"- {m['id']} (misconception): {m['text']}" for m in r["misconceptions"]]
         lines.append("")
-    lines += ["## Dev gradings", "", "| Answer | Marks (K1..) | Misconceptions | Rubric score | score_avg (0-5) |",
-              "|---|---|---|---|---|"]
+    v1 = out.get("grades_v1")
+    version = pilot.GRADER_VERSION
+    v1_head = " v1 score |" if v1 is not None else ""
+    lines += ["## Dev gradings", "", f"| Answer | Marks (K1..) | Misconceptions |{v1_head} {version} score | score_avg (0-5) |",
+              "|---|---|---|" + ("---|" if v1 is not None else "") + "---|---|"]
     for row in dev.itertuples():
         g = grades.loc[row.item_id]
-        lines.append(f"| {row.item_id} | {json.loads(g['key_point_scores'])} | {json.loads(g['misconceptions_present']) or '—'} "
-                     f"| {float(g['rubric_score']):.1f} | {row.score:g} |")
+        v1_cell = ""
+        if v1 is not None:
+            v1_cell = f" {float(v1.loc[row.item_id, 'rubric_score']):.1f} |" if row.item_id in v1.index else " — |"
+        lines.append(f"| {row.item_id} | {json.loads(g['key_point_scores'])} | {json.loads(g['misconceptions_present']) or '—'} |"
+                     f"{v1_cell} {float(g['rubric_score']):.1f} | {row.score:g} |")
     lines.append("")
     for row in dev.itertuples():
         g = grades.loc[row.item_id]

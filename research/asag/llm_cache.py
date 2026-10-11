@@ -80,21 +80,25 @@ class CachedLLM:
         fields = ("prompt_token_count", "candidates_token_count", "thoughts_token_count", "total_token_count")
         return {f: sum((u.get(f) or 0) for u in self.usage) for f in fields}
 
-    def key(self, prompt: str, schema: Optional[Dict[str, Any]] = None, system: Optional[str] = None) -> str:
-        payload = json.dumps(
-            {"model": self.model, "system": system, "prompt": prompt, "schema": schema, "temperature": TEMPERATURE},
-            sort_keys=True, ensure_ascii=False,
-        )
+    def key(self, prompt: str, schema: Optional[Dict[str, Any]] = None, system: Optional[str] = None,
+            version: Optional[str] = None) -> str:
+        """version (e.g. a prompt version) is part of the key when given; keys without it are unchanged."""
+        fields = {"model": self.model, "system": system, "prompt": prompt, "schema": schema, "temperature": TEMPERATURE}
+        if version is not None:
+            fields["version"] = version
+        payload = json.dumps(fields, sort_keys=True, ensure_ascii=False)
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
     def _path(self, key: str) -> Path:
         return self.cache_dir / self.model / f"{key}.json"
 
-    def is_cached(self, prompt: str, schema: Optional[Dict[str, Any]] = None, system: Optional[str] = None) -> bool:
-        return self._path(self.key(prompt, schema, system)).exists()
+    def is_cached(self, prompt: str, schema: Optional[Dict[str, Any]] = None, system: Optional[str] = None,
+                  version: Optional[str] = None) -> bool:
+        return self._path(self.key(prompt, schema, system, version)).exists()
 
-    def generate_json(self, prompt: str, schema: Optional[Dict[str, Any]] = None, system: Optional[str] = None) -> Dict[str, Any]:
-        key = self.key(prompt, schema, system)
+    def generate_json(self, prompt: str, schema: Optional[Dict[str, Any]] = None, system: Optional[str] = None,
+                      version: Optional[str] = None) -> Dict[str, Any]:
+        key = self.key(prompt, schema, system, version)
         path = self._path(key)
         if path.exists():
             self.hits += 1
@@ -106,7 +110,7 @@ class CachedLLM:
         usage = llm_client.last_usage if self._call is llm_client.generate_json else None
         self.usage.append(usage or {})
         path.parent.mkdir(parents=True, exist_ok=True)
-        record = {"model": self.model, "key": key, "temperature": TEMPERATURE, "system": system,
+        record = {"model": self.model, "key": key, "version": version, "temperature": TEMPERATURE, "system": system,
                   "prompt": prompt, "schema": schema, "response": response, "usage": usage}
         tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps(record, ensure_ascii=False, indent=1), encoding="utf-8")

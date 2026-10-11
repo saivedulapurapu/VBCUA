@@ -49,6 +49,7 @@ import pandas as pd
 
 from research import evaluate
 from research.asag import datasets, rubrics, sampling, thresholds
+from research.asag.grader import PROMPT_VERSION as GRADER_VERSION
 from research.asag.llm_cache import BudgetExceeded, CachedLLM, QuotaStop
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -70,7 +71,9 @@ class Paths:
         self.rubrics = self.results / "rubrics"
         self.thresholds = self.results / "thresholds.json"
         self.test = self.results / "test"
-        self.grades = self.data / "grades.csv"
+        # One grades file per grader prompt version, so earlier versions stay on disk
+        self.grades = self.data / f"grades_{GRADER_VERSION}.csv"
+        self.check_grades = self.data / f"check_grades_{GRADER_VERSION}.csv"
         self.predictions = self.data / "predictions.csv"
 
 
@@ -246,7 +249,8 @@ def _grade_row(item_id: str, result: Dict) -> Dict:
             "misconceptions_present": json.dumps(result["misconceptions_present"]),
             "misconceptions_rejected": json.dumps(result.get("misconceptions_rejected", [])),
             "evidence": json.dumps(result.get("evidence", {}), ensure_ascii=False),
-            "batch_label": result.get("batch_label", ""), "batch_size": result.get("batch_size", "")}
+            "batch_label": result.get("batch_label", ""), "batch_size": result.get("batch_size", ""),
+            "prompt_version": GRADER_VERSION}
 
 
 def stage_grade(df: pd.DataFrame, paths: Paths, llm: CachedLLM, offline: bool,
@@ -290,7 +294,7 @@ def stage_check(df: pd.DataFrame, paths: Paths, llm: CachedLLM, only: Optional[L
 
     sample = _sample(df, paths).set_index("item_id")
     batched = _graded(paths).set_index("item_id")
-    check_file = paths.data / "check_grades.csv"
+    check_file = paths.check_grades
     rows = pd.read_csv(check_file, dtype={"item_id": str}).to_dict("records") if check_file.exists() else []
     done = {r["item_id"] for r in rows}
     waiting = []

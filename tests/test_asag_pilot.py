@@ -434,3 +434,22 @@ def test_cache_records_token_usage(tmp_path, monkeypatch):
                             "thoughts_token_count": 10, "total_token_count": 250}
     records = [json.loads(f.read_text(encoding="utf-8")) for f in (tmp_path / "m1").glob("*.json")]
     assert all(r["usage"] == usage for r in records)
+
+
+def test_version_is_part_of_the_cache_key_only_when_given(tmp_path):
+    import hashlib
+
+    llm = llm_cache.CachedLLM(tmp_path, model="m1", call=FakeCall(), max_calls=5)
+    unversioned = json.dumps({"model": "m1", "system": None, "prompt": "p", "schema": None, "temperature": 0.0},
+                             sort_keys=True, ensure_ascii=False)
+    assert llm.key("p") == hashlib.sha256(unversioned.encode()).hexdigest()  # rubric keys unchanged
+    assert llm.key("p", version="v2") != llm.key("p") != llm.key("p", version="v1")
+    llm.generate_json("p", version="v2")
+    assert llm.is_cached("p", version="v2") and not llm.is_cached("p")
+
+
+def test_grades_files_are_per_prompt_version(offline_paths):
+    from research.asag import grader
+
+    assert offline_paths.grades.name == f"grades_{grader.PROMPT_VERSION}.csv"
+    assert offline_paths.check_grades.name == f"check_grades_{grader.PROMPT_VERSION}.csv"

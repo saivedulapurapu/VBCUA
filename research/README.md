@@ -50,6 +50,16 @@ python -m research.asag.pilot report  --dataset mohler --data research/data/mohl
 - **Calls are capped:** `--max-calls` limits the new Gemini calls per run, and the default 0 makes none. Every answer is cached in `research/data/llm_cache/`, keyed by (model, prompt hash), at temperature 0.
 - **Free-tier keys:** run `rubrics` / `grade` once a day with `--max-calls` at or below the daily quota. Each run resumes where the last one stopped. A run also stops cleanly when the daily quota is used up.
 
+### Grader prompt versions
+
+- **v1** (11 Oct 2026): "2 = clearly and correctly stated". Used only in the dev-only smoke test.
+- **v2** (11 Oct 2026, current): "2 = the answer clearly conveys the key point's meaning, in any wording (a
+  paraphrase counts)"; evidence must still be a verbatim quote from the answer. **Grader prompt v2 adopted
+  after a dev-only smoke test (11 answers); test answers not examined.** v1 was too strict on correct
+  paraphrases. Rubrics are unchanged (same cached rubric batch).
+- The prompt version is part of the cache key, and grades are kept per version
+  (`research/data/mohler/grades_v1.csv`, `grades_v2.csv`), so v1 results stay on disk.
+
 ## RQ2: robustness to speech-recognition errors
 
 The 200 test answers are spoken by 3 synthetic voices (Indian English, British, US) under 3
