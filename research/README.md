@@ -7,6 +7,7 @@ better than the Sentence-BERT cosine score?). The app itself is in `backend/` an
 |---|---|
 | `evaluate.py` | Agreement metrics with 95% bootstrap CIs (1000 resamples, seed 42): QWK, Spearman, accuracy, confusion matrices; Pearson, Spearman, RMSE for numeric scores |
 | `asag/` | Short-answer grading pilot: one loader per dataset, stratified split, cached Gemini calls, rubric generation, rubric grader, report |
+| `asr/` | RQ2: synthetic speech (Piper TTS), cafeteria noise, Whisper transcription |
 | `rubrics/` | Draft rubrics for six concepts (**DRAFT – NOT FACULTY REVIEWED**) and the review document generated from them |
 | `results/` | Committed outputs: split IDs, generated rubrics, fitted cut-offs, metric tables. No dataset text or labels |
 | `data/` | Datasets, per-answer predictions and the LLM cache. **Git-ignored, never committed** |
@@ -59,6 +60,36 @@ pp. 752–762, Portland, Oregon. <https://aclanthology.org/P11-1076/>
 Aggarwal, D., Sil, P., Raman, B., and Bhattacharyya, P. (2025). "I understand why I got this
 grade": Automatic Short Answer Grading (ASAG) with Feedback. In *Artificial Intelligence in
 Education (AIED 2025)*. (Cite only if EngSAF is used.)
+
+### RQ2 synthetic speech (tools and data)
+
+Audio is generated and kept in the git-ignored `research/data/tts/` and `research/data/noise/`;
+none of it is redistributed. Used for non-commercial academic research only.
+
+- **Piper** text-to-speech, `piper-tts` 1.8.0 (Open Home Foundation, <https://github.com/OHF-Voice/piper1-gpl>),
+  GPL-3.0-or-later. Voice models from <https://huggingface.co/rhasspy/piper-voices>:
+  - `en_US-l2arctic-medium`: trained on L2-ARCTIC, licence CC BY-NC 4.0. One of its Hindi-L1
+    speakers (ASI, RRBI, SVBI or TNI) is the Indian-English voice.
+  - `en_GB-alba-medium`: trained on the Alba (Scottish English) corpus,
+    <https://datashare.ed.ac.uk/handle/10283/3270>, licence CC BY 4.0.
+  - `en_US-ryan-medium`: trained on RyanSpeech, <https://www.kaggle.com/datasets/roholazandie/ryanspeech>,
+    licence CC BY-NC-SA 4.0.
+- **L2-ARCTIC**: Zhao, G., Sonsaat, S., Silpachai, A., Lucic, I., Chukharev-Hudilainen, E., Levis, J.,
+  and Gutierrez-Osuna, R. (2018). L2-ARCTIC: A Non-native English Speech Corpus. In *Proc. Interspeech
+  2018*, pp. 2783–2787. <https://psi.engr.tamu.edu/l2-arctic-corpus/>, CC BY-NC 4.0.
+- **RyanSpeech**: Zandie, R., Mahoor, M. H., Madsen, J., and Emamian, E. S. (2021). RyanSpeech: A Corpus
+  for Conversational Text-to-Speech Synthesis. In *Proc. Interspeech 2021*.
+- **Alba corpus**: Centre for Speech Technology Research, University of Edinburgh, *Alba speech corpus*
+  (Edinburgh DataShare, <https://datashare.ed.ac.uk/handle/10283/3270>), CC BY 4.0.
+- **DEMAND** noise (cafeteria recording `PCAFETER`, 16 kHz, channel 1): Thiemann, J., Ito, N., and
+  Vincent, E. (2013). The Diverse Environments Multi-channel Acoustic Noise Database (DEMAND): A database
+  of multichannel environmental noise recordings. *Proc. Meetings on Acoustics* 19, 035081.
+  <https://zenodo.org/records/1227121>, CC BY 4.0.
+- **Whisper** (local `openai-whisper`, models tiny / base / small), MIT licence: Radford, A., Kim, J. W.,
+  Xu, T., Brockman, G., McLeavey, C., and Sutskever, I. (2023). Robust Speech Recognition via Large-Scale
+  Weak Supervision. In *Proc. ICML 2023*.
+
+Check the exact author lists and page numbers against the publishers' pages before submission.
 
 [^mohler-hf]: Obtained from the Hugging Face conversion by N. Kazi,
 <https://huggingface.co/datasets/nkazi/MohlerASAG> (subset "cleaned", split "open_ended"),
