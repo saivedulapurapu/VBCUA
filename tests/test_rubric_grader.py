@@ -56,9 +56,32 @@ def test_grade_answer_parses_marks_and_scores(tmp_path):
 
 
 def test_misconception_deducts_one_mark(tmp_path):
-    llm, _ = llm_with(tmp_path, reply((2, 2), (True,)))
-    result = grader.grade_answer("Q", "A", RUBRIC, llm)
-    assert result["misconceptions_present"] == ["M1"] and result["score"] == 75.0
+    answer = "A stack is first in, first out."
+    data = reply((2, 2), (True,))
+    data["misconceptions"][0]["evidence"] = "stack is first in, first out"
+    llm, _ = llm_with(tmp_path, data)
+    result = grader.grade_answer("Q", answer, RUBRIC, llm)
+    assert result["misconceptions_present"] == ["M1"] and result["misconceptions_rejected"] == []
+    assert result["score"] == 75.0
+
+
+@pytest.mark.parametrize("evidence", ["", "a stack is FIFO", "stack is first in ... first out"])
+def test_misconception_without_verbatim_quote_is_absent(tmp_path, evidence):
+    data = reply((2, 2), (True,))
+    data["misconceptions"][0]["evidence"] = evidence
+    llm, _ = llm_with(tmp_path, data)
+    result = grader.grade_answer("Q", "A stack is first in, first out.", RUBRIC, llm)
+    assert result["misconceptions_present"] == [] and result["misconceptions_rejected"] == ["M1"]
+    assert result["score"] == 100.0  # not deducted
+
+
+def test_quote_in_answer_is_verbatim():
+    answer = "It is  Last-In First-Out, so you\npush ‘on top’."
+    assert grader.quote_in_answer("last-in first-out", answer)
+    assert grader.quote_in_answer("\"you push 'on top'.\"", answer)  # case, spaces, quote styles, framing
+    assert not grader.quote_in_answer("last in first out", answer)  # hyphens matter
+    assert not grader.quote_in_answer("It is ... on top", answer)  # no ellipsis joins
+    assert not grader.quote_in_answer("", answer) and not grader.quote_in_answer("  .", answer)
 
 
 def test_score_rule():

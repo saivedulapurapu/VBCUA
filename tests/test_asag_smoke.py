@@ -8,8 +8,7 @@ def test_evidence_quote_check():
     answer = "A stack is  Last-In First-Out. You push and pop at the top."
     assert smoke.evidence_in_answer("last-in first-out", answer) is True
     assert smoke.evidence_in_answer('"push and pop at the top."', answer) is True
-    assert smoke.evidence_in_answer("A stack is ... pop at the top", answer) is True
-    assert smoke.evidence_in_answer("pop at the top ... A stack is", answer) is False  # order matters
+    assert smoke.evidence_in_answer("A stack is ... pop at the top", answer) is False  # verbatim only
     assert smoke.evidence_in_answer("first in first out", answer) is False
     assert smoke.evidence_in_answer("", answer) is None
 

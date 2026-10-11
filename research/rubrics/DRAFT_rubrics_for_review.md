@@ -15,7 +15,8 @@ agrees better with human markers than that similarity score.
 
 - Each **key point** is marked **0** (missing or wrong), **1** (partly stated or vague) or
   **2** (clearly and correctly stated). The *partial credit* column says what earns a 1.
-- Each **misconception** is marked as stated or not stated.
+- Each **misconception** is marked as stated or not stated. It counts as stated only if the
+  grader can quote the student's words for it verbatim; otherwise it is treated as not stated.
 - Proposed overall score: score = max(0, sum of key-point marks − number of misconceptions stated) ÷ (2 × number of key points) × 100.
 - Explanations are spoken, so wording, order and informal language should not matter; only
   whether the idea is there and correct.

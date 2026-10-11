@@ -3,6 +3,8 @@ Rubric grader: one Gemini call per answer (through llm_client.generate_json, via
 marks every key point 0/1/2 and flags every misconception, with a short quote as evidence.
 
 The grader sees the question, the rubric and the answer, never the reference answer or a label.
+A misconception counts as present only if the model's evidence quote occurs verbatim in the
+answer (quote_in_answer); otherwise it is treated as absent and listed as rejected.
 The overall score is computed here from the marks, not by the model:
     score = max(0, sum(key-point marks) - misconceptions stated) / (2 * key points) * 100
 
@@ -11,6 +13,7 @@ Grade one spoken explanation against a concept rubric (needs an approved call):
 """
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -107,7 +110,22 @@ def rubric_score(marks: List[int], misconceptions_present: int) -> float:
     return round(max(0, sum(marks) - misconceptions_present) / (2 * len(marks)) * 100, 2)
 
 
-def _parse(data: Dict[str, Any], rubric: Dict[str, Any]) -> Dict[str, Any]:
+def _norm(text: str) -> str:
+    text = text.replace("’", "'").replace("‘", "'").replace("“", '"').replace("”", '"')
+    return re.sub(r"\s+", " ", text.lower()).strip()
+
+
+def quote_in_answer(quote: str, answer: str) -> bool:
+    """
+    True if the quote occurs verbatim in the answer. Only letter case, runs of whitespace,
+    curly vs straight quotes and quotation marks / end punctuation around the quote are
+    ignored; an empty quote is never found.
+    """
+    q = _norm(quote or "").strip(" \"'.,;:")
+    return bool(q) and q in _norm(answer)
+
+
+def _parse(data: Dict[str, Any], rubric: Dict[str, Any], answer: str) -> Dict[str, Any]:
     kp_ids = [k["id"] for k in rubric["key_points"]]
     m_ids = [m["id"] for m in rubric["misconceptions"]]
     kp = {item.get("id"): item for item in data.get("key_points", [])}
@@ -119,10 +137,13 @@ def _parse(data: Dict[str, Any], rubric: Dict[str, Any]) -> Dict[str, Any]:
     marks = [kp[i]["mark"] for i in kp_ids]
     if any(m not in MARKS or isinstance(m, bool) for m in marks):
         raise GradingError(f"Marks must be 0, 1 or 2: {marks}")
-    present = [i for i in m_ids if mc[i]["present"] is True]
+    flagged = [i for i in m_ids if mc[i]["present"] is True]
+    # A misconception counts only if the model quotes it from the answer
+    present = [i for i in flagged if quote_in_answer(mc[i].get("evidence", ""), answer)]
     return {
         "key_point_scores": marks,
         "misconceptions_present": present,
+        "misconceptions_rejected": [i for i in flagged if i not in present],
         "evidence": {i: kp[i].get("evidence", "") for i in kp_ids} | {i: mc[i].get("evidence", "") for i in m_ids},
         "score": rubric_score(marks, len(present)),
     }
@@ -131,10 +152,11 @@ def _parse(data: Dict[str, Any], rubric: Dict[str, Any]) -> Dict[str, Any]:
 def grade_answer(question: str, answer: str, rubric: Dict[str, Any], llm: CachedLLM) -> Dict[str, Any]:
     """
     Marks one answer. Returns {"key_point_scores": [0-2 per key point, rubric order],
-    "misconceptions_present": [ids], "evidence": {id: quote}, "score": 0-100}.
+    "misconceptions_present": [ids], "misconceptions_rejected": [ids flagged by the model
+    without a verbatim quote, so not counted], "evidence": {id: quote}, "score": 0-100}.
     """
     data = llm.generate_json(build_prompt(question, answer, rubric), schema=SCHEMA, system=SYSTEM)
-    return _parse(data, rubric)
+    return _parse(data, rubric, answer)
 
 
 def is_cached(question: str, answer: str, rubric: Dict[str, Any], llm: CachedLLM) -> bool:

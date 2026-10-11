@@ -23,27 +23,9 @@ from research.asag import datasets, grader, pilot, rubrics
 from research.asag.llm_cache import BudgetExceeded, CachedLLM, QuotaStop
 
 
-def _norm(text: str) -> str:
-    text = text.lower().replace("’", "'").replace("‘", "'").replace("“", '"').replace("”", '"')
-    return re.sub(r"\s+", " ", text).strip()
-
-
 def evidence_in_answer(quote: str, answer: str) -> Optional[bool]:
-    """
-    True if the quote occurs in the answer (case and whitespace ignored; parts joined by "..."
-    must appear in order), False if not, None for an empty quote (nothing claimed).
-    """
-    parts = [p.strip(" \"'.,;:") for p in re.split(r"\.\.\.|…", _norm(quote))]
-    parts = [p for p in parts if p]
-    if not parts:
-        return None
-    haystack, start = _norm(answer), 0
-    for part in parts:
-        found = haystack.find(part, start)
-        if found < 0:
-            return False
-        start = found + len(part)
-    return True
+    """The grader's verbatim check; None for an empty quote (nothing claimed)."""
+    return None if not (quote or "").strip() else grader.quote_in_answer(quote, answer)
 
 
 def select_dev(sample: pd.DataFrame, n_questions: int) -> pd.DataFrame:
@@ -122,7 +104,8 @@ def render(out: Dict, show: int) -> str:
         for k, mark in zip(rubric["key_points"], res["key_point_scores"]):
             lines.append(f"| {k['id']} | {mark} | {res['evidence'][k['id']] or '—'} | {_mark(g['checks'][k['id']])} |")
         for m in rubric["misconceptions"]:
-            present = "present" if m["id"] in res["misconceptions_present"] else "no"
+            present = ("present" if m["id"] in res["misconceptions_present"]
+                       else "flagged, no verbatim quote: not counted" if m["id"] in res.get("misconceptions_rejected", []) else "no")
             lines.append(f"| {m['id']} | {present} | {res['evidence'][m['id']] or '—'} | {_mark(g['checks'][m['id']])} |")
         lines.append("")
     if len(out["results"]) > show:
