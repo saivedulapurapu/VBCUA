@@ -407,11 +407,12 @@ def test_linear_map_fits_and_clips():
 
 def test_daily_quota_stops_at_once(tmp_path):
     error = ApiError(429)
-    error.args = ("429 RESOURCE_EXHAUSTED quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier",)
+    error.args = ("429 RESOURCE_EXHAUSTED quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier. "
+                  "Please retry in 7h12m3.5s.",)
     slept = []
     call = FakeCall([error])
     llm = llm_cache.CachedLLM(tmp_path, model="m1", call=call, max_calls=5, sleep=slept.append)
-    with pytest.raises(llm_cache.QuotaStop, match="daily quota"):
+    with pytest.raises(llm_cache.QuotaStop, match=r"daily quota used up \(the API says: retry in 7h12m3\.5s\)"):
         llm.generate_json("p")
     assert slept == [] and len(call.calls) == 1
 

@@ -10,6 +10,7 @@ A call budget makes sure a run never makes more calls than were approved.
 import hashlib
 import json
 import logging
+import re
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Sequence
@@ -126,7 +127,9 @@ class CachedLLM:
                 if _status(e) not in BACKOFF_STATUS:
                     raise
                 if is_daily_quota(e):
-                    raise QuotaStop(f"{self.model}: daily quota used up; run again tomorrow to continue") from e
+                    wait = re.search(r"retry in ([0-9hms.]+)", f"{e} {e.__cause__ or ''}")
+                    when = f" (the API says: retry in {wait.group(1).rstrip('.')})" if wait else ""
+                    raise QuotaStop(f"{self.model}: daily quota used up{when}; run again after the reset to continue") from e
                 if attempt == len(self.backoff_s):
                     raise QuotaStop(f"{self.model} still refusing after {attempt} retries: {e}") from e
                 self.retries += 1
