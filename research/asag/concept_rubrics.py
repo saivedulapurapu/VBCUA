@@ -24,6 +24,8 @@ SCORING_RULE = (
 def load_all(folder: Path = RUBRIC_DIR) -> List[Dict]:
     rubrics = []
     for path in sorted(folder.glob("*.json")):
+        if path.name == "reference_answers.json":  # cosine references, not a rubric
+            continue
         data = json.loads(path.read_text(encoding="utf-8"))
         Rubric.model_validate(data)
         rubrics.append(data)

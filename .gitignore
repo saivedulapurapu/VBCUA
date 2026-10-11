@@ -142,3 +142,6 @@ test_report.pdf
 
 # Research data (participant audio, transcripts, ratings) — never commit unless consented and anonymised
 research/data/
+
+# Local drafts (not part of the repository)
+research/engsaf_request.md

@@ -10,6 +10,7 @@ refuses to run until every row has a holistic rating, and freezes a copy of the 
     python -m research.asr.self_recordings setup        # README checklist + empty my_ratings.csv
     python -m research.asr.self_recordings convert      # m4a -> 16 kHz mono wav (FFmpeg)
     python -m research.asr.self_recordings transcribe   # Whisper small, as the app runs it
+    python -m research.asr.self_recordings approve-references   # only after the author approves them
     python -m research.asr.self_recordings score --max-calls 6   # cosine + rubric grader
 
 Rubric grading is one Gemini call per concept (its 5 transcripts batched, as in the pilot), so
@@ -212,9 +213,38 @@ def transcribe_all(folder: Path = SELF_DIR, transcribe: Optional[Callable] = Non
 
 
 # ---------------------------------------------------------------- scoring
-def reference_text(rubric: Dict) -> str:
-    """Cosine reference for a concept: its key points joined (the concept rubrics have no reference answer)."""
-    return " ".join(k["text"] for k in rubric["key_points"])
+# Reference answers (80-120 words, written before any recording) used for cosine scoring.
+# Once the author approves them, their checksum is recorded and scoring refuses changed text.
+REFERENCES = audio.ROOT / "research" / "rubrics" / "reference_answers.json"
+APPROVAL = audio.ROOT / "research" / "rubrics" / "reference_answers.approved.sha256"
+
+
+def references_digest(path: Path = REFERENCES) -> str:
+    """SHA-256 of the answers only (canonical JSON), so editing the status line does not change it."""
+    answers = json.loads(path.read_text(encoding="utf-8"))["answers"]
+    return hashlib.sha256(json.dumps(answers, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
+def approve_references(path: Path = REFERENCES, approval: Path = APPROVAL) -> str:
+    """Run only when the author has approved the text: marks it approved and records its checksum."""
+    import datetime
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["status"] = f"APPROVED BY AUTHOR ({datetime.date.today().isoformat()})"
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    digest = references_digest(path)
+    approval.write_text(digest + "\n", encoding="ascii")
+    return digest
+
+
+def check_references(path: Path = REFERENCES, approval: Path = APPROVAL) -> Dict[str, str]:
+    """The approved reference answers; stops if they are not approved or changed since approval."""
+    if not approval.exists():
+        raise SystemExit("Reference answers are not approved yet (DRAFT – AUTHOR REVIEW PENDING); "
+                         "approve them with `approve-references` before scoring.")
+    if references_digest(path) != approval.read_text(encoding="ascii").strip():
+        raise SystemExit("Reference answers changed after approval; scoring refuses changed references.")
+    return json.loads(path.read_text(encoding="utf-8"))["answers"]
 
 
 def cosine_scores(texts: List[str], references: List[str], encode: Optional[Callable] = None) -> np.ndarray:
@@ -223,20 +253,23 @@ def cosine_scores(texts: List[str], references: List[str], encode: Optional[Call
     return pairwise(pd.DataFrame({"answer": texts, "reference": references}), encode)
 
 
-def score(folder: Path = SELF_DIR, llm=None, encode: Optional[Callable] = None) -> pd.DataFrame:
+def score(folder: Path = SELF_DIR, llm=None, encode: Optional[Callable] = None,
+          references: Path = REFERENCES, approval: Path = APPROVAL) -> pd.DataFrame:
     """
-    Cosine (v1 and B0, as in the app) for every transcript, and the rubric grader with one
-    batched call per concept. Refuses to run until my_ratings.csv is complete; freezes it first.
+    Cosine (v1 and B0, as in the app) against the approved reference answer of each concept, and
+    the rubric grader with one batched call per concept. Refuses to run until my_ratings.csv is
+    complete and the reference answers are approved and unchanged; freezes the ratings first.
     """
     from backend.app.services.semantic import similarity_from_cosine, similarity_from_cosine_b0
     from research.asag import grader
 
     check_ratings(folder / "my_ratings.csv")
+    answers = check_references(references, approval)
     freeze_ratings(folder / "my_ratings.csv")
     transcripts = pd.read_csv(folder / "transcripts.csv", dtype=str, keep_default_na=False)
     rubrics = rubrics_by_id()
     transcripts["concept"] = [next(c for c in CONCEPTS if f.startswith(FILE_STEMS[c] + "_")) for f in transcripts["file"]]
-    refs = [reference_text(rubrics[c]) for c in transcripts["concept"]]
+    refs = [answers[c] for c in transcripts["concept"]]
     cos = cosine_scores(transcripts["text"].tolist(), refs, encode)
     transcripts["cosine"] = cos
     transcripts["v1_score"] = [similarity_from_cosine(c) for c in cos]
@@ -261,7 +294,7 @@ def score(folder: Path = SELF_DIR, llm=None, encode: Optional[Callable] = None) 
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Self-recorded explanations of the six rubric concepts.")
-    parser.add_argument("command", choices=["setup", "convert", "transcribe", "score"])
+    parser.add_argument("command", choices=["setup", "convert", "transcribe", "score", "approve-references"])
     parser.add_argument("--max-calls", type=int, default=0, help="approved Gemini calls (default 0: cosine only)")
     args = parser.parse_args(argv)
     if args.command == "setup":
@@ -271,6 +304,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"Converted {len(convert())} recordings")
     elif args.command == "transcribe":
         print(f"{len(transcribe_all())} transcripts in {SELF_DIR / 'transcripts.csv'}")
+    elif args.command == "approve-references":
+        print(f"Reference answers approved; checksum {approve_references()} recorded in {APPROVAL}")
     elif args.command == "score":
         llm = None
         if args.max_calls:

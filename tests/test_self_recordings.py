@@ -117,8 +117,9 @@ def test_transcribe_and_score_with_fakes(tmp_path, rubrics, monkeypatch):
     assert len(transcripts) == 30 and set(seen) == {"small"}
     assert len(sr.transcribe_all(tmp_path, transcribe=fake_whisper)) == 30 and len(seen) == 30  # resumable
 
+    refs, approval = _approved_refs(tmp_path)
     with pytest.raises(SystemExit):  # no ratings yet: no scoring
-        sr.score(tmp_path, encode=lambda texts: np.ones((len(texts), 3)))
+        sr.score(tmp_path, encode=lambda texts: np.ones((len(texts), 3)), references=refs, approval=approval)
     _filled(rubrics).to_csv(tmp_path / "my_ratings.csv", index=False)
 
     from research.asag import llm_cache
@@ -131,7 +132,7 @@ def test_transcribe_and_score_with_fakes(tmp_path, rubrics, monkeypatch):
                 for label in re.findall(r'<answer id="(A\d+)">', prompt)]
 
     llm = llm_cache.CachedLLM(tmp_path / "cache", model="m1", max_calls=6, call=fake_gemini)
-    table = sr.score(tmp_path, llm=llm, encode=lambda texts: np.ones((len(texts), 3)))
+    table = sr.score(tmp_path, llm=llm, encode=lambda texts: np.ones((len(texts), 3)), references=refs, approval=approval)
     assert len(table) == 30 and llm.calls == 6  # one batched call per concept
     assert set(table["rubric_score"]) == {100.0} and set(table["v1_score"]) == {100.0}
     assert (tmp_path / "my_ratings.frozen.csv").exists()
@@ -143,5 +144,58 @@ def test_cosine_only_without_llm(tmp_path, rubrics):
         audio.write_wav(tmp_path / "wav" / name.replace(".m4a", ".wav"), (0.1 * np.sin(2 * np.pi * 200 * t)).astype(np.float32))
     sr.transcribe_all(tmp_path, transcribe=lambda m, s, seed: {"text": "redundant data", "asr_confidence": -0.1})
     _filled(rubrics).to_csv(tmp_path / "my_ratings.csv", index=False)
-    table = sr.score(tmp_path, llm=None, encode=lambda texts: np.ones((len(texts), 3)))
+    refs, approval = _approved_refs(tmp_path)
+    table = sr.score(tmp_path, llm=None, encode=lambda texts: np.ones((len(texts), 3)), references=refs, approval=approval)
     assert len(table) == 5 and (table["rubric_score"] == "").all()
+
+
+# ---------------------------------------------------------------- reference answers
+def _approved_refs(tmp_path):
+    refs = tmp_path / "reference_answers.json"
+    refs.write_text(sr.REFERENCES.read_text(encoding="utf-8"), encoding="utf-8")
+    approval = tmp_path / "reference_answers.approved.sha256"
+    sr.approve_references(refs, approval)
+    return refs, approval
+
+
+def test_reference_answers_cover_six_concepts_in_80_to_120_words():
+    import json
+
+    data = json.loads(sr.REFERENCES.read_text(encoding="utf-8"))
+    assert set(data["answers"]) == set(sr.CONCEPTS)
+    for concept, text in data["answers"].items():
+        assert 80 <= len(text.split()) <= 120, concept
+
+
+def test_repo_reference_answers_are_draft_or_approved_and_unchanged():
+    import json
+
+    status = json.loads(sr.REFERENCES.read_text(encoding="utf-8"))["status"]
+    if sr.APPROVAL.exists():
+        assert status.startswith("APPROVED BY AUTHOR")
+        assert sr.references_digest() == sr.APPROVAL.read_text(encoding="ascii").strip()
+    else:
+        assert status == "DRAFT – AUTHOR REVIEW PENDING"
+
+
+def test_scoring_refuses_unapproved_or_changed_references(tmp_path):
+    import json
+
+    refs = tmp_path / "reference_answers.json"
+    refs.write_text(sr.REFERENCES.read_text(encoding="utf-8"), encoding="utf-8")
+    approval = tmp_path / "approved.sha256"
+    with pytest.raises(SystemExit, match="not approved yet"):
+        sr.check_references(refs, approval)
+    digest = sr.approve_references(refs, approval)
+    assert json.loads(refs.read_text(encoding="utf-8"))["status"].startswith("APPROVED BY AUTHOR")
+    assert sr.references_digest(refs) == digest  # the status line is not part of the checksum
+    assert set(sr.check_references(refs, approval)) == set(sr.CONCEPTS)
+    data = json.loads(refs.read_text(encoding="utf-8"))
+    data["answers"]["deadlock"] += " Extra sentence."
+    refs.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(SystemExit, match="changed after approval"):
+        sr.check_references(refs, approval)
+
+
+def test_reference_file_is_not_loaded_as_a_rubric():
+    assert {r["id"] for r in sr.rubrics_by_id().values()} == set(sr.CONCEPTS)
