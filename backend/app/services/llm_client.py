@@ -84,7 +84,19 @@ def _call(contents: Any, config: Dict[str, Any], model: Optional[str] = None) ->
                 _sleep(delay)
                 continue
             raise LLMError(f"{model} call failed: {e}") from e
+    _record_usage(response, model)
     return response
+
+
+# Token counts of the most recent successful call (research scripts read this to log cost)
+last_usage: Optional[Dict[str, Any]] = None
+USAGE_FIELDS = ("prompt_token_count", "candidates_token_count", "thoughts_token_count", "total_token_count")
+
+
+def _record_usage(response: Any, model: str) -> None:
+    global last_usage
+    meta = getattr(response, "usage_metadata", None)
+    last_usage = {"model": model, **{f: getattr(meta, f, None) for f in USAGE_FIELDS}} if meta is not None else None
 
 # Sentinel: use settings.GEMINI_THINKING_LEVEL
 DEFAULT_THINKING = object()

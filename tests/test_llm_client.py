@@ -237,3 +237,13 @@ def test_thinking_config_accepted_by_sdk():
     from google.genai import types
     for level in ["minimal", "low", "medium", "high"]:
         types.GenerateContentConfig(**llm_client._base_config("s", 0.2, level))
+
+
+def test_last_usage_records_token_counts(client, monkeypatch):
+    usage = SimpleNamespace(prompt_token_count=120, candidates_token_count=30, thoughts_token_count=50, total_token_count=200)
+    fake = client(text='{"ok": true}')
+    monkeypatch.setattr(fake.models, "generate_content",
+                        lambda **kw: SimpleNamespace(text='{"ok": true}', usage_metadata=usage))
+    llm_client.generate_json("p")
+    assert llm_client.last_usage == {"model": "gemini-test-model", "prompt_token_count": 120,
+                                     "candidates_token_count": 30, "thoughts_token_count": 50, "total_token_count": 200}

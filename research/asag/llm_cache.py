@@ -71,7 +71,13 @@ class CachedLLM:
         self.calls = 0
         self.hits = 0
         self.retries = 0
+        self.usage: list = []  # token counts of this run's new calls (empty dicts when unknown)
         self._last_call = 0.0
+
+    def tokens(self) -> Dict[str, int]:
+        """Summed token counts of this run's new calls."""
+        fields = ("prompt_token_count", "candidates_token_count", "thoughts_token_count", "total_token_count")
+        return {f: sum((u.get(f) or 0) for u in self.usage) for f in fields}
 
     def key(self, prompt: str, schema: Optional[Dict[str, Any]] = None, system: Optional[str] = None) -> str:
         payload = json.dumps(
@@ -94,10 +100,13 @@ class CachedLLM:
             return json.loads(path.read_text(encoding="utf-8"))["response"]
         if self.calls >= self.max_calls:
             raise BudgetExceeded(f"Call budget of {self.max_calls} reached; not calling {self.model}")
+        llm_client.last_usage = None
         response = self._call_with_backoff(prompt, schema, system)
+        usage = llm_client.last_usage if self._call is llm_client.generate_json else None
+        self.usage.append(usage or {})
         path.parent.mkdir(parents=True, exist_ok=True)
         record = {"model": self.model, "key": key, "temperature": TEMPERATURE, "system": system,
-                  "prompt": prompt, "schema": schema, "response": response}
+                  "prompt": prompt, "schema": schema, "response": response, "usage": usage}
         tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps(record, ensure_ascii=False, indent=1), encoding="utf-8")
         tmp.replace(path)

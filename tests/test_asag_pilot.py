@@ -411,3 +411,22 @@ def test_daily_quota_stops_at_once(tmp_path):
     with pytest.raises(llm_cache.QuotaStop, match="daily quota"):
         llm.generate_json("p")
     assert slept == [] and len(call.calls) == 1
+
+
+def test_cache_records_token_usage(tmp_path, monkeypatch):
+    usage = {"model": "m1", "prompt_token_count": 100, "candidates_token_count": 20,
+             "thoughts_token_count": 5, "total_token_count": 125}
+
+    def fake_generate_json(prompt, *, schema=None, system=None, temperature=None, model=None):
+        llm_cache.llm_client.last_usage = usage
+        return {"ok": prompt}
+
+    monkeypatch.setattr(llm_cache.llm_client, "generate_json", fake_generate_json)
+    llm = llm_cache.CachedLLM(tmp_path, model="m1", max_calls=5)
+    llm.generate_json("a")
+    llm.generate_json("b")
+    llm.generate_json("a")  # cached: not counted again
+    assert llm.tokens() == {"prompt_token_count": 200, "candidates_token_count": 40,
+                            "thoughts_token_count": 10, "total_token_count": 250}
+    records = [json.loads(f.read_text(encoding="utf-8")) for f in (tmp_path / "m1").glob("*.json")]
+    assert all(r["usage"] == usage for r in records)

@@ -134,6 +134,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     llm = CachedLLM(pilot.CACHE_DIR, max_calls=args.max_calls, min_interval_s=args.min_interval)
     out = run(df, paths, llm, args.questions)
     print(f"LLM: {llm.calls} new calls, {llm.hits} from cache, {llm.retries} retries")
+    tokens = llm.tokens()
+    print("Tokens (new calls): " + ", ".join(f"{k.replace('_token_count', '')} {v}" for k, v in tokens.items()))
     if out["stopped"]:
         print(f"Stopped: {out['stopped']}", file=sys.stderr)
     report = render(out, args.show)
