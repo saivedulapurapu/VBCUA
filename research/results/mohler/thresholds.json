@@ -1,0 +1,36 @@
+{
+  "fitted_on": "dev",
+  "label_cutoffs": {
+    "objective": "QWK (ties: accuracy)",
+    "app_cutoffs": [
+      50.0,
+      80.0
+    ],
+    "v1": {
+      "low": 25.4405421900522,
+      "high": 51.984707029868645,
+      "dev_qwk": 0.49841605068637795,
+      "dev_accuracy": 0.62
+    },
+    "b0": {
+      "low": 62.7202710950261,
+      "high": 75.99235351493434,
+      "dev_qwk": 0.49841605068637795,
+      "dev_accuracy": 0.62
+    }
+  },
+  "linear_maps_to_gold_scale": {
+    "v1": {
+      "slope": 0.02439098337070584,
+      "intercept": 2.819535021753782,
+      "low": 0.0,
+      "high": 5.0
+    },
+    "b0": {
+      "slope": 0.04878196674141174,
+      "intercept": 0.38043668468319686,
+      "low": 0.0,
+      "high": 5.0
+    }
+  }
+}
