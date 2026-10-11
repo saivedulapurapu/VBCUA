@@ -37,6 +37,15 @@ def test_qwk_matches_reference_formula():
     assert ev.qwk(a, b, k) == pytest.approx(reference)
 
 
+def test_qwk_matches_sklearn():
+    from sklearn.metrics import cohen_kappa_score
+    rng = np.random.default_rng(5)
+    for k in (3, 6):
+        a, b = rng.integers(0, k, 80), rng.integers(0, k, 80)
+        expected = cohen_kappa_score(a, b, labels=list(range(k)), weights="quadratic")
+        assert ev.qwk(a, b, k) == pytest.approx(expected)
+
+
 def test_undefined_metrics_are_nan():
     constant = np.array([1, 1, 1])
     assert math.isnan(ev.qwk(constant, constant, 3))

@@ -22,7 +22,6 @@ from typing import Callable, Dict, List, Optional, Sequence
 import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
-from sklearn.metrics import cohen_kappa_score
 
 N_RESAMPLES = 1000
 SEED = 42
@@ -38,11 +37,29 @@ def to_ordinal(values: Sequence, labels: Sequence[str]) -> np.ndarray:
     return np.array([index[v] for v in values], dtype=float)
 
 
+_WEIGHTS: Dict[int, np.ndarray] = {}
+
+
 def qwk(y_true: np.ndarray, y_pred: np.ndarray, n_labels: int) -> float:
-    """Quadratic weighted kappa; NaN when undefined (e.g. both raters use a single label)."""
-    with np.errstate(divide="ignore", invalid="ignore"):
-        value = cohen_kappa_score(y_true, y_pred, labels=list(range(n_labels)), weights="quadratic")
-    return float(value) if np.isfinite(value) else math.nan
+    """
+    Quadratic weighted kappa; NaN when undefined (e.g. both raters use a single label).
+    Same result as sklearn's cohen_kappa_score(weights="quadratic"), computed directly with
+    NumPy because the bootstrap calls it thousands of times.
+    """
+    t = np.asarray(y_true, dtype=int)
+    p = np.asarray(y_pred, dtype=int)
+    if len(t) == 0:
+        return math.nan
+    observed = np.bincount(t * n_labels + p, minlength=n_labels * n_labels).reshape(n_labels, n_labels)
+    expected = np.outer(observed.sum(1), observed.sum(0)) / len(t)
+    if n_labels not in _WEIGHTS:
+        i, j = np.indices((n_labels, n_labels))
+        _WEIGHTS[n_labels] = (i - j) ** 2
+    weights = _WEIGHTS[n_labels]
+    denominator = (weights * expected).sum()
+    if denominator == 0:
+        return math.nan
+    return float(1 - (weights * observed).sum() / denominator)
 
 
 def spearman(y_true: np.ndarray, scores: np.ndarray) -> float:
