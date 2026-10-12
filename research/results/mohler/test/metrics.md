@@ -4,11 +4,11 @@
 
 | Method | n | Pearson r [95% CI] | Spearman [95% CI] | RMSE [95% CI] |
 |---|---|---|---|---|
-| v1 | 200 | 0.446 [0.338, 0.542] | 0.448 [0.333, 0.554] | 0.950 [0.840, 1.067] |
-| b0 | 200 | 0.446 [0.338, 0.542] | 0.448 [0.333, 0.554] | 0.950 [0.840, 1.067] |
+| v1 | 200 | 0.464 [0.363, 0.558] | 0.473 [0.356, 0.575] | 0.939 [0.829, 1.052] |
+| b0 | 200 | 0.464 [0.363, 0.558] | 0.473 [0.356, 0.575] | 0.939 [0.829, 1.052] |
 | human ceiling: grader 1 vs grader 2 | 200 | 0.558 [0.438, 0.657] | 0.596 [0.478, 0.693] | 1.365 [1.180, 1.564] |
 
-Each method's raw score is mapped to the gold scale by a straight line fitted on dev only (clipped to the scale). Pearson and Spearman do not depend on that map; RMSE does. The ceiling row compares the two human graders with each other, not with their average.
+Each method's raw score is mapped to the gold scale by a straight line fitted on dev only (clipped to the scale); RMSE uses that mapped score, Pearson and Spearman the raw score. The ceiling row compares the two human graders with each other, not with their average.
 
 # mohler: secondary — three labels on the test split (n=200)
 
@@ -16,10 +16,10 @@ Each method's raw score is mapped to the gold scale by a straight line fitted on
 
 | Method | n | QWK [95% CI] | Spearman [95% CI] | Accuracy [95% CI] |
 |---|---|---|---|---|
-| v1_cosine_tuned | 200 | 0.356 [0.231, 0.476] | 0.413 [0.298, 0.522] | 0.590 [0.525, 0.655] |
-| b0_cosine_tuned | 200 | 0.356 [0.231, 0.476] | 0.413 [0.298, 0.522] | 0.590 [0.525, 0.655] |
-| v1_cosine_app | 200 | 0.193 [0.118, 0.277] | 0.413 [0.298, 0.522] | 0.310 [0.250, 0.375] |
-| b0_cosine_app | 200 | 0.337 [0.229, 0.432] | 0.413 [0.298, 0.522] | 0.575 [0.505, 0.640] |
+| v1_cosine_tuned | 200 | 0.362 [0.229, 0.481] | 0.429 [0.304, 0.535] | 0.575 [0.505, 0.645] |
+| b0_cosine_tuned | 200 | 0.362 [0.229, 0.481] | 0.429 [0.304, 0.535] | 0.575 [0.505, 0.645] |
+| v1_cosine_app | 200 | 0.208 [0.129, 0.292] | 0.429 [0.304, 0.535] | 0.315 [0.255, 0.385] |
+| b0_cosine_app | 200 | 0.359 [0.245, 0.460] | 0.429 [0.304, 0.535] | 0.590 [0.520, 0.655] |
 | human ceiling: grader 1 vs grader 2 | 200 | 0.491 [0.375, 0.587] | 0.578 [0.458, 0.679] | 0.640 [0.575, 0.705] |
 
 *_tuned: label cut-offs chosen on dev only (max QWK). *_app: the app's fixed cut-offs (50 / 80). With tuned cut-offs v1 and B0 give the same labels, because both are increasing functions of the cosine.
@@ -28,25 +28,25 @@ Each method's raw score is mapped to the gold scale by a straight line fitted on
 
 | | pred: incorrect | pred: partial | pred: correct |
 |---|---|---|---|
-| human: incorrect | 2 | 9 | 5 |
-| human: partial | 10 | 27 | 22 |
-| human: correct | 2 | 34 | 89 |
+| human: incorrect | 5 | 6 | 5 |
+| human: partial | 18 | 15 | 26 |
+| human: correct | 8 | 22 | 95 |
 
 ## Confusion matrix: b0_cosine_tuned
 
 | | pred: incorrect | pred: partial | pred: correct |
 |---|---|---|---|
-| human: incorrect | 2 | 9 | 5 |
-| human: partial | 10 | 27 | 22 |
-| human: correct | 2 | 34 | 89 |
+| human: incorrect | 5 | 6 | 5 |
+| human: partial | 18 | 15 | 26 |
+| human: correct | 8 | 22 | 95 |
 
 ## Confusion matrix: v1_cosine_app
 
 | | pred: incorrect | pred: partial | pred: correct |
 |---|---|---|---|
-| human: incorrect | 11 | 5 | 0 |
-| human: partial | 31 | 26 | 2 |
-| human: correct | 34 | 66 | 25 |
+| human: incorrect | 10 | 6 | 0 |
+| human: partial | 30 | 27 | 2 |
+| human: correct | 29 | 70 | 26 |
 
 ## Confusion matrix: b0_cosine_app
 
@@ -54,4 +54,4 @@ Each method's raw score is mapped to the gold scale by a straight line fitted on
 |---|---|---|---|
 | human: incorrect | 0 | 15 | 1 |
 | human: partial | 0 | 42 | 17 |
-| human: correct | 0 | 52 | 73 |
+| human: correct | 0 | 49 | 76 |

@@ -88,3 +88,21 @@ def test_make_clean_clips_is_resumable(tmp_path):
     assert (tmp_path / "clean" / "us" / "E01.Q01.A01.wav").exists()
     again = audio.make_clean_clips(answers, root=tmp_path / "clean", manifest=manifest, synth=fake)
     assert again["made"] == 0 and len(calls) == 6 and again["total"] == 6
+
+
+def test_intelligibility_check(tmp_path):
+    import pandas as pd
+
+    ids = [f"E01.Q01.A{i:02d}" for i in range(15)]
+    answers = pd.DataFrame({"item_id": ids, "answer": [f"answer {i}" for i in range(15)]})
+    audio.make_clean_clips(answers, voices=("indian",), root=tmp_path / "clean", manifest=tmp_path / "m.csv",
+                           synth=lambda text, voice: tone(0.2))
+    out = audio.make_intelligibility_check(tmp_path / "m.csv", tmp_path / "clean", tmp_path / "check", answers)
+    sheet = pd.read_csv(out / "clips.csv", keep_default_na=False)
+    assert len(sheet) == 10 and sheet["item_id"].is_unique
+    assert list(sheet.columns) == ["clip", "item_id", "speaker", "seconds", "text", "clearly_pronounced (yes/no)", "notes"]
+    assert (sheet["clearly_pronounced (yes/no)"] == "").all() and set(sheet["speaker"]) == {"TNI"}
+    assert all((out / c).exists() for c in sheet["clip"])
+    assert sheet.loc[0, "text"] == answers.set_index("item_id").loc[sheet.loc[0, "item_id"], "answer"]
+    again = audio.make_intelligibility_check(tmp_path / "m.csv", tmp_path / "clean", tmp_path / "check", answers)
+    assert pd.read_csv(again / "clips.csv", keep_default_na=False).equals(sheet)  # same seed, same clips

@@ -453,3 +453,16 @@ def test_grades_files_are_per_prompt_version(offline_paths):
 
     assert offline_paths.grades.name == f"grades_{grader.PROMPT_VERSION}.csv"
     assert offline_paths.check_grades.name == f"check_grades_{grader.PROMPT_VERSION}.csv"
+
+
+def test_primary_correlations_use_the_raw_score(offline_paths, big):
+    paths = offline_paths
+    df = datasets.validate(_with_scores(big))
+    pilot.stage_split(df, paths)
+    pilot.stage_report(df, paths, "synthetic", encode=_fake_encode)
+    preds = pd.read_csv(paths.predictions)
+    test = preds[preds["split"] == "test"]
+    primary = pd.read_csv(paths.test / "primary_scores.csv").set_index("method")
+    from research import evaluate
+    assert primary.loc["v1", "pearson"] == pytest.approx(evaluate.pearson(test["score"].to_numpy(), test["v1_score"].to_numpy()))
+    assert primary.loc["v1", "rmse"] == pytest.approx(evaluate.rmse(test["score"].to_numpy(), test["v1_mapped"].to_numpy()))

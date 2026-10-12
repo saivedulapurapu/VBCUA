@@ -443,7 +443,12 @@ def stage_report(df: pd.DataFrame, paths: Paths, dataset: str, encode: Optional[
     report = []
 
     if continuous:
-        rows = [{"method": b, **evaluate.evaluate_continuous(test["score"], test[f"{b}_mapped"])} for b in bases]
+        # Pearson and Spearman on the raw score (the clipped map would change them); RMSE on the mapped score
+        rows = []
+        for b in bases:
+            raw = evaluate.evaluate_continuous(test["score"], test[f"{b}_score"])
+            mapped = evaluate.evaluate_continuous(test["score"], test[f"{b}_mapped"])
+            rows.append({"method": b, **raw, **{k: v for k, v in mapped.items() if k.startswith("rmse")}})
         if has_graders:
             rows.append({"method": "human ceiling: grader 1 vs grader 2",
                          **evaluate.evaluate_continuous(test["score_grader_1"], test["score_grader_2"])})
@@ -454,7 +459,7 @@ def stage_report(df: pd.DataFrame, paths: Paths, dataset: str, encode: Optional[
             primary, f"{dataset}: primary — scores vs gold ({scale}) on the test split (n={len(test)})", scale))
         report.append(
             "Each method's raw score is mapped to the gold scale by a straight line fitted on dev only "
-            "(clipped to the scale). Pearson and Spearman do not depend on that map; RMSE does. "
+            "(clipped to the scale); RMSE uses that mapped score, Pearson and Spearman the raw score. "
             "The ceiling row compares the two human graders with each other, not with their average.\n")
 
     labels = list(datasets.LABELS)

@@ -14,6 +14,7 @@ the manifest). Noisy versions are made from the saved clip on the fly, determini
 
     python -m research.asr.audio listen      # listening-check clips for the four Hindi-L1 speakers
     python -m research.asr.audio synth       # clean clips: 200 test answers x 3 voices (resumable)
+    python -m research.asr.audio intelligibility   # 10 Indian-voice clips + sheet to judge by ear
 """
 import argparse
 import hashlib
@@ -236,12 +237,49 @@ def make_clean_clips(answers, voices=tuple(VOICES), root: Path = CLEAN_DIR, mani
     return {"made": made, "total": len(rows), "seconds": time.perf_counter() - started}
 
 
+INTELLIGIBILITY_N = 10
+INTELLIGIBILITY_SEED = 42
+
+
+def make_intelligibility_check(manifest: Path = MANIFEST, clean_root: Path = CLEAN_DIR,
+                               out_dir: Path = TTS_DIR / "intelligibility_check", answers=None) -> Path:
+    """
+    Copies INTELLIGIBILITY_N random Indian-voice clean clips (fixed seed) and writes clips.csv with
+    each clip's text and an empty "clearly_pronounced (yes/no)" column to fill in by ear.
+    Never overwrites an existing clips.csv (it may hold ratings).
+    """
+    import shutil
+
+    import pandas as pd
+
+    answers = answers if answers is not None else test_answers()
+    clips = pd.read_csv(manifest, dtype=str)
+    indian = clips[clips["voice"] == "indian"].sort_values("item_id")
+    chosen = indian.sample(n=INTELLIGIBILITY_N, random_state=INTELLIGIBILITY_SEED).sort_values("item_id")
+    text = answers.set_index("item_id")["answer"]
+    out_dir.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for i, c in enumerate(chosen.itertuples(), 1):
+        name = f"{i:02d}_{c.item_id}.wav"
+        shutil.copyfile(clip_path(c.item_id, "indian", clean_root), out_dir / name)
+        rows.append({"clip": name, "item_id": c.item_id, "speaker": c.speaker, "seconds": c.seconds,
+                     "text": text[c.item_id], "clearly_pronounced (yes/no)": "", "notes": ""})
+    sheet = out_dir / "clips.csv"
+    if sheet.exists():
+        print(f"{sheet} already exists; not overwriting.")
+    else:
+        pd.DataFrame(rows).to_csv(sheet, index=False)
+    return out_dir
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Synthetic speech for RQ2.")
-    parser.add_argument("command", choices=["listen", "synth"])
+    parser.add_argument("command", choices=["listen", "synth", "intelligibility"])
     args = parser.parse_args(argv)
     if args.command == "listen":
         print(f"Listening-check clips in {make_listening_clips()}")
+    if args.command == "intelligibility":
+        print(f"Intelligibility-check clips in {make_intelligibility_check()}")
     if args.command == "synth":
         result = make_clean_clips(test_answers())
         print(f"Clean clips: {result['made']} new, {result['total']} in the manifest, {result['seconds']:.0f} s")

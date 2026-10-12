@@ -1,4 +1,4 @@
 ,pred: incorrect,pred: partial,pred: correct
 human: incorrect,0,15,1
 human: partial,0,42,17
-human: correct,0,52,73
+human: correct,0,49,76

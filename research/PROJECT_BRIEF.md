@@ -2,7 +2,7 @@
 
 *Voice-Based Concept Understanding Analyser.* Factual brief for writing the report, slides and talk.
 Sources: the repository, git history, `vbcua.db`, `research/results/` and
-`VBCUA_Documents/Research Plan/VBCUA_Work_and_8-Week_Plan.pdf`. Snapshot: **11 Oct 2026, 12:15 IST**.
+`VBCUA_Documents/Research Plan/VBCUA_Work_and_8-Week_Plan.pdf`. Snapshot: **12 Oct 2026, morning** (first written 11 Oct).
 Anything not established in those sources is marked **TBD**.
 
 ---
@@ -67,7 +67,7 @@ fluency score → feedback) → database → PDF on request.
 | Docs | README aligned with code; `Scope_and_Changes.md`; video links fixed; 8-week research plan | `eff28cf`, `0f2cd24`, `2fb68f6` |
 | Research code | Evaluation metrics, short-answer grading pilot, rubrics, grader, RQ2 speech pipeline (see §5) | `d1dcb26` … `cc5cafe` |
 
-**Tests:** 313 pytest tests (backend + research; Gemini and models stubbed) and ~68 Vitest test cases in
+**Tests:** 323 pytest tests (backend + research; Gemini and models stubbed) and ~68 Vitest test cases in
 9 web test files, all passing at the time of writing.
 
 ## 4. Current app
@@ -156,8 +156,8 @@ whether batching changes scores. Main run **100 calls**; RQ2 **162**; self-recor
 
 | Method | Pearson r | Spearman | RMSE |
 |---|---|---|---|
-| v1 cosine | 0.446 [0.338, 0.542] | 0.448 [0.333, 0.554] | 0.950 [0.840, 1.067] |
-| B0 cosine | 0.446 [0.338, 0.542] | 0.448 [0.333, 0.554] | 0.950 [0.840, 1.067] |
+| v1 cosine | 0.464 [0.363, 0.558] | 0.473 [0.356, 0.575] | 0.939 [0.829, 1.052] |
+| B0 cosine | 0.464 [0.363, 0.558] | 0.473 [0.356, 0.575] | 0.939 [0.829, 1.052] |
 | Human ceiling (grader 1 vs 2) | 0.558 [0.438, 0.657] | 0.596 [0.478, 0.693] | 1.365 [1.180, 1.564] |
 | Rubric LLM grader | pending | pending | pending |
 
@@ -165,22 +165,44 @@ whether batching changes scores. Main run **100 calls**; RQ2 **162**; self-recor
 
 | Method | QWK | Accuracy |
 |---|---|---|
-| v1 / B0, cut-offs tuned on dev | 0.356 [0.231, 0.476] | 0.590 [0.525, 0.655] |
-| v1, app cut-offs 50/80 | 0.193 [0.118, 0.277] | 0.310 [0.250, 0.375] |
-| B0, app cut-offs 50/80 | 0.337 [0.229, 0.432] | 0.575 [0.505, 0.640] |
+| v1 / B0, cut-offs tuned on dev | 0.362 [0.229, 0.481] | 0.575 [0.505, 0.645] |
+| v1, app cut-offs 50/80 | 0.208 [0.129, 0.292] | 0.315 [0.255, 0.385] |
+| B0, app cut-offs 50/80 | 0.359 [0.245, 0.460] | 0.590 [0.520, 0.655] |
 | Human ceiling | 0.491 [0.375, 0.587] | 0.640 [0.575, 0.705] |
 | Rubric LLM grader | pending | pending |
 
 Notes: v1 and B0 are identical after dev fitting (both increasing functions of cosine). The app's fixed
 cut-offs suit B0's inflated scale, not v1's — confirming the cut-offs need recalibration. The ceiling's RMSE
-is not comparable (two individual graders vs a method fitted to their average).
+is not comparable (two individual graders vs a method fitted to their average). These numbers use the
+bracket-fixed text (12 Oct); an earlier run on text with `-LRB-`/`-RRB-` tokens gave r = 0.446 and is superseded.
+Pearson and Spearman are on the raw score; RMSE on the dev-fitted 0–5 map.
+
+**RQ2 — ASR errors and the cosine score** (200 test answers; typed answer = no ASR, v1 r = 0.464). WER = word
+error rate vs the typed answer; r = v1 Pearson with `score_avg`; shift = mean |change| in v1 score (0–100).
+Full table with CIs: `research/results/mohler_asr/summary.md`.
+
+| Voice · noise | WER tiny / base / small | v1 r tiny / base / small | Shift tiny / base / small |
+|---|---|---|---|
+| Indian · clean | 29.7 / 25.2 / 20.4 % | 0.375 / 0.416 / 0.401 | 16.0 / 14.4 / 10.6 |
+| Indian · light | 31.9 / 25.8 / 20.9 % | 0.397 / 0.385 / 0.344 | 16.0 / 13.7 / 12.0 |
+| Indian · heavy | 50.5 / 40.8 / 31.0 % | 0.313 / 0.347 / 0.354 | 26.8 / 23.1 / 17.2 |
+| British · clean | 13.7 / 10.8 / 7.8 % | 0.395 / 0.382 / 0.384 | 7.0 / 6.4 / 4.1 |
+| British · light | 14.4 / 11.2 / 7.9 % | 0.390 / 0.383 / 0.391 | 8.0 / 6.6 / 4.3 |
+| British · heavy | 20.5 / 16.5 / 10.5 % | 0.324 / 0.374 / 0.379 | 11.0 / 10.2 / 6.2 |
+| US · clean | 10.5 / 9.0 / 7.3 % | 0.425 / 0.423 / 0.435 | 5.4 / 4.6 / 4.0 |
+| US · light | 11.1 / 9.6 / 7.8 % | 0.404 / 0.415 / 0.433 | 6.0 / 4.8 / 3.8 |
+| US · heavy | 14.9 / 11.3 / 9.3 % | 0.369 / 0.411 / 0.426 | 7.8 / 6.2 / 4.6 |
+
+The Indian-English voice has 2–3× the WER of the British and US voices in every condition; B0 shifts are
+exactly half of v1's (its formula halves the cosine), with the same correlations.
 
 | Item | Status |
 |---|---|
-| Smoke test (12 calls: 1 rubric batch, 9 gradings, 2 batching-check) | **Pending** — waiting for "go" after 12:35 IST |
+| Smoke test, grader v1 (12 calls, 11 Oct) | Done: 11 dev answers, all valid; v1 too strict on paraphrases → prompt v2 |
+| Smoke test, grader v2 | 5 of 9 grading calls done; 6 calls left (4 grading + 2 check) |
 | Batching check | Pending |
-| RQ2 transcription | Running since 10:33: small 845/1800 at 12:15; est. finish small ≈ 14:00, base ≈ 15:10, tiny ≈ 15:45 |
-| RQ2 WER / cosine report | Pending (report script TBD) |
+| RQ2 transcription | Done 12 Oct 01:36: 5,400 / 5,400 (stopped once on 11 Oct by laptop sleep; resumed with keep-awake) |
+| RQ2 WER / cosine report | Done (above) |
 | RQ2 rubric grading | Pending |
 | Self-recordings | Pending (not recorded) |
 
@@ -190,7 +212,7 @@ is not comparable (two individual graders vs a method fitted to their average).
 pilot; Mohler split and cosine report; draft concept rubrics; grader; batching design; Piper voices, listening
 check (TNI), 600 clean clips; reference answers approved; EngSAF access requested.
 
-**Running:** Whisper transcription of 5,400 jobs (§6).
+**Done 12 Oct:** Whisper transcription of 5,400 jobs; RQ2 WER and cosine report; main cosine report re-run on bracket-fixed text.
 
 **Dated plan** (assumes 20 Gemini calls/day, each run approved):
 
@@ -201,7 +223,7 @@ check (TNI), 600 clean clips; reference answers approved; EngSAF access requeste
 | by 17 Oct | Self-recordings recorded and hand-rated; then scored (6 calls) |
 | 17–25 Oct | RQ2 grading: Whisper small batch (81), then tiny (81) |
 | 18 Oct | EngSAF decision point (7 days after request) |
-| After transcription | RQ2 WER and cosine report |
+| 12 Oct | RQ2 WER and cosine report (done); smoke test v2 (6 calls) |
 | 21 Nov – 4 Dec | Plan weeks 7–8 (from 10 Oct start): figures, 4–6 page paper, repo clean-up, demo — exact dates TBD |
 | TBD | Faculty review of rubrics; student data collection and ethics approval |
 
@@ -236,7 +258,7 @@ check (TNI), 600 clean clips; reference answers approved; EngSAF access requeste
 | `backend/app/models/`, `schemas/` | SQLAlchemy models, Pydantic schemas |
 | `web/` | React + TypeScript + Vite app (built to `web/dist`) |
 | `run.py` | Builds the web app if needed, starts the server on port 8000 |
-| `tests/` | pytest suite (313 tests) |
+| `tests/` | pytest suite (323 tests) |
 | `research/evaluate.py` | QWK, Spearman, accuracy, Pearson, RMSE with bootstrap CIs |
 | `research/asag/` | Pilot: dataset loaders, sampling, LLM cache, rubric generation, grader, thresholds, smoke test |
 | `research/rubrics/` | Six draft concept rubrics, review document, approved reference answers |
