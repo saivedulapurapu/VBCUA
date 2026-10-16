@@ -26,7 +26,7 @@ VBCUA is an AI-powered web application designed to evaluate how effectively user
    - The original formulas remain available as baseline `B0` (`method="b0"`) for research comparisons.
    - Every sub-score, the scoring methods, the ASR model and the feedback source (LLM or rule-based) are stored per attempt.
 
-3. **Web app** (React + TypeScript + Vite, served by the backend)
+3. **Web app** (React + JavaScript + Vite, served by the backend)
    - Glassmorphism design in light and dark, following the system setting unless you pick one.
    - **Trending today**: topics in today's news (any area, not only tech) found by Gemini with Google Search grounding, cached once per day, with source links and Google's search suggestions. If grounding is unavailable (no key or quota), a curated list is shown as "Suggested topics".
    - **Any topic**: type anything; Gemini writes a reference definition and key terms, saved as a concept marked *AI-generated reference* (practice only: research analysis uses the curated library concepts, see the `source` column).
@@ -59,7 +59,7 @@ VBCUA/
 │   │       ├── semantic.py         # Sentence-BERT similarity & keyword check
 │   │       └── speech_to_text.py   # Whisper & Gemini transcription managers
 │   └── requirements.txt       # Backend dependencies
-├── web/                       # React + TypeScript web app (Vite)
+├── web/                       # React (JavaScript) web app (Vite)
 │   ├── src/                   # Components, hooks, API client, styles and tests
 │   └── package.json           # Web app dependencies and scripts
 ├── tests/                     # pytest suite (models and APIs stubbed)
@@ -194,7 +194,7 @@ The tests stub Whisper, Sentence-BERT and Gemini, so they need no model download
 
 ## Pipeline & Tech Stack
 
-- **Frameworks**: FastAPI (backend) & React + TypeScript + Vite (web app)
+- **Frameworks**: FastAPI (backend) & React + JavaScript + Vite (web app)
 - **Database**: SQLite by default; PostgreSQL optional (`postgresql+psycopg2://` URL) via SQLAlchemy ORM
 - **Speech processing**: OpenAI Whisper (optional Google Gemini fallback)
 - **AI feedback**: Google Gemini via the `google-genai` SDK, with a rule-based fallback

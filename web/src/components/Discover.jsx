@@ -1,27 +1,27 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowRight, ExternalLink, Flame, Lightbulb } from 'lucide-react'
 import { api } from '../api'
-import type { Concept, TrendingResponse } from '../types'
+
 import { ErrorNotice } from './ErrorNotice'
 
-interface Props {
-  concepts: Concept[]
-  /** Called with the concept to explain (existing or newly generated). */
-  onConcept: (concept: Concept) => void
-}
 
-const categoryClass = (category: string) => `cat-${category.toLowerCase().replace(/[^a-z]/g, '')}`
+
+
+
+
+
+const categoryClass = (category) => `cat-${category.toLowerCase().replace(/[^a-z]/g, '')}`
 
 /**
  * "Trending today" (live from Google Search via the backend) or "Suggested topics" (curated fallback),
  * plus "Any topic": type anything and the backend prepares an AI-written reference for it.
  */
-export function Discover({ concepts, onConcept }: Props) {
-  const [trending, setTrending] = useState<TrendingResponse | null>(null)
+export function Discover({ concepts, onConcept }) {
+  const [trending, setTrending] = useState(null)
   const [loadFailed, setLoadFailed] = useState(false)
   const [topic, setTopic] = useState('')
-  const [preparing, setPreparing] = useState<string | null>(null)
-  const [error, setError] = useState<unknown>(null)
+  const [preparing, setPreparing] = useState(null)
+  const [error, setError] = useState(null)
 
   useEffect(() => {
     api.getTrending().then(setTrending).catch(() => setLoadFailed(true))
@@ -38,7 +38,7 @@ export function Discover({ concepts, onConcept }: Props) {
     return [...new Set([...fromLibrary, ...fromTrending])].slice(0, 5)
   }, [topic, concepts, trending])
 
-  const prepare = async (rawTopic: string) => {
+  const prepare = async (rawTopic) => {
     const wanted = rawTopic.trim()
     if (wanted.length < 2 || preparing) return
     const existing = concepts.find((c) => c.title.toLowerCase() === wanted.toLowerCase())

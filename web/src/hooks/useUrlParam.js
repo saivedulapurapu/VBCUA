@@ -1,11 +1,11 @@
 import { useCallback, useState } from 'react'
 
 /** A query-string parameter kept in sync with state, so a page reload keeps it. */
-export function useUrlParam(name: string): [string | null, (value: string | null) => void] {
-  const [value, setValue] = useState<string | null>(() => new URLSearchParams(window.location.search).get(name))
+export function useUrlParam(name) {
+  const [value, setValue] = useState(() => new URLSearchParams(window.location.search).get(name))
 
   const update = useCallback(
-    (next: string | null) => {
+    (next) => {
       const url = new URL(window.location.href)
       if (next === null) url.searchParams.delete(name)
       else url.searchParams.set(name, next)

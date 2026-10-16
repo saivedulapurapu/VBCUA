@@ -45,7 +45,7 @@ describe('useFeedback', () => {
   })
 
   it('stops when a different attempt is shown', async () => {
-    let resolve: (e: typeof done) => void = () => {}
+    let resolve = () => {}
     vi.spyOn(api, 'requestFeedback').mockImplementation(() => new Promise((r) => { resolve = r }))
     const onUpdate = vi.fn()
     const { rerender } = renderHook(({ e }) => useFeedback(e, onUpdate), { initialProps: { e: pending } })

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { feedbackInProgress } from '../lib/display'
-import type { Evaluation } from '../types'
+
 
 const POLL_MS = 3000
 const MAX_WAIT_MS = 300_000
@@ -11,8 +11,8 @@ const MAX_WAIT_MS = 300_000
  * calls the AI twice for one attempt) and, if another request is already generating it, polls
  * until it is done. Stops when a different attempt is shown.
  */
-export function useFeedback(current: Evaluation | null, onUpdate: (e: Evaluation) => void) {
-  const [error, setError] = useState<unknown>(null)
+export function useFeedback(current, onUpdate) {
+  const [error, setError] = useState(null)
   const onUpdateRef = useRef(onUpdate)
   onUpdateRef.current = onUpdate
 
@@ -23,7 +23,7 @@ export function useFeedback(current: Evaluation | null, onUpdate: (e: Evaluation
     if (id === undefined || !waiting) return
     const controller = new AbortController()
     const { signal } = controller
-    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
     setError(null)
 
     ;(async () => {

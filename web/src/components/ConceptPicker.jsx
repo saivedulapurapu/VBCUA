@@ -1,22 +1,22 @@
 import { useId, useMemo, useRef, useState } from 'react'
 import { ChevronDown, Shuffle, Sparkles } from 'lucide-react'
-import type { Concept } from '../types'
+
 import { randomConcept } from '../lib/display'
 
-interface Props {
-  concepts: Concept[]
-  selectedId: number | null
-  onSelect: (id: number) => void
-}
+
+
+
+
+
 
 /** Searchable concept list with keyboard support and a "Surprise me" button. */
-export function ConceptPicker({ concepts, selectedId, onSelect }: Props) {
+export function ConceptPicker({ concepts, selectedId, onSelect }) {
   const selected = concepts.find((c) => c.id === selectedId) ?? null
-  const [query, setQuery] = useState<string | null>(null)
+  const [query, setQuery] = useState(null)
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
   const listId = useId()
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef(null)
 
   const matches = useMemo(() => {
     const q = (query ?? '').trim().toLowerCase()
@@ -24,13 +24,13 @@ export function ConceptPicker({ concepts, selectedId, onSelect }: Props) {
     return concepts.filter((c) => c.title.toLowerCase().includes(q) || c.keywords.some((k) => k.toLowerCase().includes(q)))
   }, [concepts, query])
 
-  const choose = (concept: Concept) => {
+  const choose = (concept) => {
     onSelect(concept.id)
     setQuery(null)
     setOpen(false)
   }
 
-  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const onKeyDown = (e) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault()
       setOpen(true)

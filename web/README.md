@@ -1,6 +1,6 @@
 # VBCUA web app
 
-React + TypeScript + Vite frontend. The FastAPI backend serves the production build from `web/dist`.
+React + JavaScript + Vite frontend. The FastAPI backend serves the production build from `web/dist`.
 
 ```bash
 npm install
