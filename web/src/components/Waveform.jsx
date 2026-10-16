@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react'
 
 /** Live microphone waveform drawn from an AnalyserNode (accent colour from the theme). */
-export function Waveform({ analyser }: { analyser: AnalyserNode | null }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
+export function Waveform({ analyser }) {
+  const canvasRef = useRef(null)
 
   useEffect(() => {
     const canvas = canvasRef.current

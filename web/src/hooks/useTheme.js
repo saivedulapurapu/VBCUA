@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 
-export type ThemeChoice = 'system' | 'light' | 'dark'
+ 
 
 const KEY = 'vbcua-theme'
 
-function readStored(): ThemeChoice {
+function readStored() {
   try {
     const value = localStorage.getItem(KEY)
     return value === 'light' || value === 'dark' ? value : 'system'
@@ -15,7 +15,7 @@ function readStored(): ThemeChoice {
 
 /** Light / dark / follow-the-system theme, stored per browser. */
 export function useTheme() {
-  const [theme, setTheme] = useState<ThemeChoice>(readStored)
+  const [theme, setTheme] = useState(readStored)
 
   useEffect(() => {
     const root = document.documentElement

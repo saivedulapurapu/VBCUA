@@ -3,7 +3,7 @@ import { api, ApiError } from './api'
 
 afterEach(() => vi.unstubAllGlobals())
 
-function respond(status: number, body: unknown) {
+function respond(status, body) {
   vi.stubGlobal(
     'fetch',
     vi.fn(async () => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })),
@@ -38,11 +38,11 @@ describe('api errors', () => {
     const fetchMock = vi.fn(async () => new Response('{"id": 4}', { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
     await api.evaluate(3, new Blob(['x'], { type: 'audio/wav' }), 'rec.wav')
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    const [url, init] = fetchMock.mock.calls[0] 
     expect(url).toBe('/api/evaluate')
-    const form = init.body as FormData
+    const form = init.body 
     expect(form.get('concept_id')).toBe('3')
-    expect((form.get('file') as File).name).toBe('rec.wav')
+    expect((form.get('file') ).name).toBe('rec.wav')
   })
 })
 

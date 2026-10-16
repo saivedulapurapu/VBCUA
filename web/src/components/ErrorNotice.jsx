@@ -2,7 +2,7 @@ import { AlertTriangle } from 'lucide-react'
 import { ApiError } from '../api'
 
 /** A short message, with the technical detail available on demand. */
-export function ErrorNotice({ error }: { error: unknown }) {
+export function ErrorNotice({ error }) {
   const message = error instanceof ApiError ? error.message : 'Something went wrong. Please try again.'
   const detail = error instanceof ApiError ? error.detail : String(error)
   return (

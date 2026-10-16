@@ -1,14 +1,12 @@
-import type { Concept, Evaluation } from '../types'
+export const CLOUD = { id: 2, title: 'Cloud Computing', description: 'Cloud def', keywords: ['servers', 'storage'] }
 
-export const CLOUD: Concept = { id: 2, title: 'Cloud Computing', description: 'Cloud def', keywords: ['servers', 'storage'] }
-
-export const CONCEPTS: Concept[] = [
+export const CONCEPTS = [
   { id: 1, title: 'Machine Learning', description: 'ML def', keywords: ['training'] },
   CLOUD,
   { id: 3, title: 'Database Management System (DBMS)', description: 'DB def', keywords: ['sql', 'tables'] },
 ]
 
-export function attempt(overrides: Partial<Evaluation> = {}): Evaluation {
+export function attempt(overrides = {}) {
   return {
     id: 7,
     concept_id: 2,

@@ -97,9 +97,9 @@ describe('concept selection', () => {
 })
 
 describe('AI-generated topics', () => {
-  const ai = { ...CLOUD, id: 4, title: 'Baahubali Movie Overview', source: 'ai-generated' as const }
-  const lib = { ...CLOUD, id: 2, source: 'library' as const }
-  const custom = { ...CLOUD, id: 6, title: 'REST API', source: 'custom' as const }
+  const ai = { ...CLOUD, id: 4, title: 'Baahubali Movie Overview', source: 'ai-generated'  }
+  const lib = { ...CLOUD, id: 2, source: 'library'  }
+  const custom = { ...CLOUD, id: 6, title: 'REST API', source: 'custom'  }
 
   it('are never the default selection', () => {
     expect(initialConceptId([ai, lib, custom], null)).toBe(2)

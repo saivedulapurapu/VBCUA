@@ -1,7 +1,7 @@
 import { formatClock } from '../lib/display'
 
 /** Shown while the backend transcribes and scores the explanation. */
-export function AnalyseProgress({ conceptTitle, seconds }: { conceptTitle: string; seconds: number }) {
+export function AnalyseProgress({ conceptTitle, seconds }) {
   return (
     <div className="progress glass" role="status" aria-live="polite">
       <div className="spinner" aria-hidden />

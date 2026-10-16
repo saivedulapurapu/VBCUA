@@ -1,26 +1,26 @@
 import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { api } from '../api'
-import type { Concept } from '../types'
+
 import { ErrorNotice } from './ErrorNotice'
 
-interface Props {
-  onClose: () => void
-  onCreated: (concept: Concept) => void
-}
+
+
+
+
 
 /** Side panel to add a concept with a reference definition and keywords. */
-export function AddConceptDrawer({ onClose, onCreated }: Props) {
+export function AddConceptDrawer({ onClose, onCreated }) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [keywords, setKeywords] = useState('')
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<unknown>(null)
-  const firstField = useRef<HTMLInputElement>(null)
+  const [error, setError] = useState(null)
+  const firstField = useRef(null)
 
   useEffect(() => {
     firstField.current?.focus()
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    const onKey = (e) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
@@ -28,7 +28,7 @@ export function AddConceptDrawer({ onClose, onCreated }: Props) {
   const keywordList = keywords.split(',').map((k) => k.trim()).filter(Boolean)
   const valid = title.trim() && description.trim() && keywordList.length > 0
 
-  const submit = async (e: React.FormEvent) => {
+  const submit = async (e) => {
     e.preventDefault()
     if (!valid) return
     setSaving(true)

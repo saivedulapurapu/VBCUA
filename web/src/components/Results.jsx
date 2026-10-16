@@ -2,7 +2,7 @@ import { useId, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { Download, Info, MicOff, RefreshCw, Repeat } from 'lucide-react'
 import { api } from '../api'
-import type { Evaluation } from '../types'
+
 import {
   conceptTitle, deliveryRows, demoteHeadings, detailsRows, feedbackInProgress, feedbackNotice, formatDate,
   gradeTone, keywordBadges, scoreCards,
@@ -10,23 +10,23 @@ import {
 import { ScoreRing } from './ScoreRing'
 import { ErrorNotice } from './ErrorNotice'
 
-const TABS = ['Feedback', 'Keywords', 'Transcript', 'Details'] as const
-type Tab = (typeof TABS)[number]
+const TABS = ['Feedback', 'Keywords', 'Transcript', 'Details'] 
 
-interface Props {
-  evaluation: Evaluation
-  feedbackError: unknown
-  onRetryFeedback: () => void
-  /** True when this attempt's concept is not the one currently selected for the next attempt */
-  canPractise?: boolean
-  onPractise?: () => void
-}
+
+
+
+
+
+
+
+
+
 
 /** Step 3: scores, notices and tabs for one attempt. All values come from the stored attempt. */
-export function Results({ evaluation: e, feedbackError, onRetryFeedback, canPractise = false, onPractise }: Props) {
-  const [tab, setTab] = useState<Tab>('Feedback')
+export function Results({ evaluation: e, feedbackError, onRetryFeedback, canPractise = false, onPractise }) {
+  const [tab, setTab] = useState('Feedback')
   const tabIds = useId()
-  const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
+  const tabRefs = useRef([])
   const title = conceptTitle(e)
   const notice = feedbackNotice(e)
   const writing = feedbackInProgress(e)
@@ -34,7 +34,7 @@ export function Results({ evaluation: e, feedbackError, onRetryFeedback, canPrac
   const found = badges.filter((b) => b.status === 'found').length
   const recorded = badges.some((b) => b.status === 'found' || b.status === 'missing')
 
-  const onTabKey = (event: React.KeyboardEvent, index: number) => {
+  const onTabKey = (event, index) => {
     const delta = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0
     if (!delta) return
     const next = (index + delta + TABS.length) % TABS.length

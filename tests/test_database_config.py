@@ -68,7 +68,7 @@ import time  # noqa: E402
 
 def make_web(tmp_path, built=True):
     (tmp_path / "src").mkdir()
-    (tmp_path / "src" / "App.tsx").write_text("x", encoding="utf-8")
+    (tmp_path / "src" / "App.jsx").write_text("x", encoding="utf-8")
     (tmp_path / "package.json").write_text("{}", encoding="utf-8")
     if built:
         (tmp_path / "dist").mkdir()
@@ -83,7 +83,7 @@ def test_web_needs_build_when_dist_missing(tmp_path):
 def test_web_up_to_date_after_build(tmp_path):
     web = make_web(tmp_path)
     old = time.time() - 100
-    os.utime(web / "src" / "App.tsx", (old, old))
+    os.utime(web / "src" / "App.jsx", (old, old))
     os.utime(web / "package.json", (old, old))
     assert run.web_needs_build(str(web)) is False
 

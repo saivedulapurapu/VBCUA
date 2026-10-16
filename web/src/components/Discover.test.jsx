@@ -2,14 +2,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { api, ApiError } from '../api'
-import type { TrendingResponse } from '../types'
+
 import { CONCEPTS } from '../test/fixtures'
 import { Discover } from './Discover'
 import { ConceptPicker } from './ConceptPicker'
 
 afterEach(() => vi.restoreAllMocks())
 
-const LIVE: TrendingResponse = {
+const LIVE = {
   date: '2026-10-10',
   origin: 'google-search',
   topics: [
@@ -19,8 +19,8 @@ const LIVE: TrendingResponse = {
   sources: [{ title: 'Example News', uri: 'https://news.example/a' }],
   search_entry_point: '<div class="chips">Google suggestions</div>',
 }
-const CURATED: TrendingResponse = { ...LIVE, origin: 'curated', sources: [], search_entry_point: null }
-const GENERATED = { id: 9, title: 'Nobel Prize in Physics', description: 'AI reference', keywords: ['physics'], source: 'ai-generated' as const }
+const CURATED = { ...LIVE, origin: 'curated', sources: [], search_entry_point: null }
+const GENERATED = { id: 9, title: 'Nobel Prize in Physics', description: 'AI reference', keywords: ['physics'], source: 'ai-generated'  }
 
 describe('Discover', () => {
   it('labels live topics as trending and shows Google suggestions in a sandbox', async () => {
@@ -65,7 +65,7 @@ describe('Discover', () => {
 
   it('accepts any typed topic and shows progress', async () => {
     vi.spyOn(api, 'getTrending').mockResolvedValue(CURATED)
-    let resolve: (c: typeof GENERATED) => void = () => {}
+    let resolve = () => {}
     vi.spyOn(api, 'generateConcept').mockImplementation(() => new Promise((r) => { resolve = r }))
     const onConcept = vi.fn()
     render(<Discover concepts={CONCEPTS} onConcept={onConcept} />)
