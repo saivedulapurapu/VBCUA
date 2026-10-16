@@ -19,11 +19,11 @@ VBCUA is an AI-powered web application designed to evaluate how effectively user
 
 2. **Speech Fluency & Delivery Metrics**
    - Fluency score (provisional) is based on the pause ratio only, measured between the first and last detected speech using **Librosa**; calibration is pending.
-   - Delivery measures are stored per attempt but **not scored**: speaking rate (words per minute), number of pauses of 1 s or more, long pauses per minute and the longest pause. `research/backfill_delivery_measures.py` fills them in for older attempts from their saved audio.
+   - Delivery measures are stored per attempt but **not scored**: speaking rate (words per minute), number of pauses of 1 s or more, long pauses per minute and the longest pause.
    - Filler words (`um`, `uh`, `like`, `ah`, `you know`, `basically`, `actually`) are counted and stored but are **experimental and not scored**: speech-to-text usually removes "um/uh".
    - RMS energy is stored as a raw value and used only to warn about a very quiet recording ("check your microphone"); it does not affect any score.
    - Overall score = 70% understanding + 30% fluency.
-   - The original formulas remain available as baseline `B0` (`method="b0"`) for research comparisons.
+   - The original formulas remain available as baseline `B0` (`method="b0"`) for comparison.
    - Every sub-score, the scoring methods, the ASR model and the feedback source (LLM or rule-based) are stored per attempt.
 
 3. **Web app** (React + TypeScript + Vite, served by the backend)
@@ -63,9 +63,8 @@ VBCUA/
 │   ├── src/                   # Components, hooks, API client, styles and tests
 │   └── package.json           # Web app dependencies and scripts
 ├── tests/                     # pytest suite (models and APIs stubbed)
-├── research/data/             # Research data (git-ignored)
 ├── uploads/                   # Local store for audio uploads and generated PDFs
-├── VBCUA_Documents/           # June 2026 project documents and research plan
+├── VBCUA_Documents/           # June 2026 project documents
 ├── .env                       # Local environment configuration file (ignored)
 ├── .env.template              # Template for configuring env variables
 ├── pytest.ini                 # pytest configuration
