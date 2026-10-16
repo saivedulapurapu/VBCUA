@@ -4,26 +4,26 @@ import { useRecorder } from '../hooks/useRecorder'
 import { formatClock } from '../lib/display'
 import { Waveform } from './Waveform'
 
-export interface AudioInput {
-  blob: Blob
-  filename: string
-}
+
+
+
+
 
 const ACCEPTED = ['.wav', '.mp3', '.m4a', '.webm', '.ogg']
 
-export function isAcceptedAudio(name: string): boolean {
+export function isAcceptedAudio(name) {
   const lower = name.toLowerCase()
   return ACCEPTED.some((ext) => lower.endsWith(ext))
 }
 
 /** Step 2: record in the browser (live waveform, timer) or upload / drop a file. */
-export function Recorder({ onChange, disabled = false }: { onChange: (audio: AudioInput | null) => void; disabled?: boolean }) {
-  const [mode, setMode] = useState<'record' | 'upload'>('record')
+export function Recorder({ onChange, disabled = false }) {
+  const [mode, setMode] = useState('record')
   const recorder = useRecorder()
-  const [file, setFile] = useState<{ file: File; url: string } | null>(null)
-  const [fileError, setFileError] = useState<string | null>(null)
+  const [file, setFile] = useState(null)
+  const [fileError, setFileError] = useState(null)
   const [dragging, setDragging] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef(null)
 
   // Report the active audio (from the current mode) to the parent
   useEffect(() => {
@@ -35,7 +35,7 @@ export function Recorder({ onChange, disabled = false }: { onChange: (audio: Aud
     if (file) URL.revokeObjectURL(file.url)
   }, [file])
 
-  const pickFile = (picked: File | undefined) => {
+  const pickFile = (picked) => {
     if (!picked) return
     if (!isAcceptedAudio(picked.name)) {
       setFileError(`Unsupported file type. Use ${ACCEPTED.join(', ')}.`)

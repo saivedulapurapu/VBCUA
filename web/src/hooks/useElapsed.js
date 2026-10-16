@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 /** Seconds since `running` became true (0 while not running). */
-export function useElapsed(running: boolean): number {
+export function useElapsed(running) {
   const [seconds, setSeconds] = useState(0)
   useEffect(() => {
     if (!running) {

@@ -82,7 +82,7 @@ def setup_db():
         logger.warning("The application will fallback to SQLite if PostgreSQL connection fails at runtime.")
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
-WEB_SOURCES = ("src", "public", "index.html", "package.json", "vite.config.ts")
+WEB_SOURCES = ("src", "public", "index.html", "package.json", "vite.config.js")
 
 
 def newest_mtime(paths):

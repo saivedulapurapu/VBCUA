@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { History as HistoryIcon, Mic, Plus, Sparkles } from 'lucide-react'
 import { api } from './api'
-import type { Concept, Evaluation } from './types'
+
 import { initialConceptId } from './lib/display'
 import { useTheme } from './hooks/useTheme'
 import { useUrlParam } from './hooks/useUrlParam'
@@ -12,7 +12,7 @@ import { ConceptPicker } from './components/ConceptPicker'
 import { Discover } from './components/Discover'
 import { AddConceptDrawer } from './components/AddConceptDrawer'
 import { ErrorNotice } from './components/ErrorNotice'
-import { Recorder, type AudioInput } from './components/Recorder'
+import { Recorder, } from './components/Recorder'
 import { AnalyseProgress } from './components/AnalyseProgress'
 import { Results } from './components/Results'
 import { History } from './components/History'
@@ -21,18 +21,18 @@ export default function App() {
   const { theme, cycle } = useTheme()
   const [conceptParam, setConceptParam] = useUrlParam('concept')
   const [attemptParam, setAttemptParam] = useUrlParam('attempt')
-  const [concepts, setConcepts] = useState<Concept[]>([])
-  const [history, setHistory] = useState<Evaluation[]>([])
-  const [loadError, setLoadError] = useState<unknown>(null)
+  const [concepts, setConcepts] = useState([])
+  const [history, setHistory] = useState([])
+  const [loadError, setLoadError] = useState(null)
   const [addingConcept, setAddingConcept] = useState(false)
-  const [audio, setAudio] = useState<AudioInput | null>(null)
+  const [audio, setAudio] = useState(null)
   const [analysing, setAnalysing] = useState(false)
-  const [analyseError, setAnalyseError] = useState<unknown>(null)
-  const [current, setCurrent] = useState<Evaluation | null>(null)
+  const [analyseError, setAnalyseError] = useState(null)
+  const [current, setCurrent] = useState(null)
   const elapsed = useElapsed(analysing)
-  const resultsRef = useRef<HTMLElement>(null)
-  const recorderRef = useRef<HTMLHeadingElement>(null)
-  const onAudioChange = useCallback((a: AudioInput | null) => setAudio(a), [])
+  const resultsRef = useRef(null)
+  const recorderRef = useRef(null)
+  const onAudioChange = useCallback((a) => setAudio(a), [])
 
   // Initial data; reopen the attempt from the URL so a reload keeps it
   useEffect(() => {
@@ -46,11 +46,11 @@ export default function App() {
 
   const selectedId = initialConceptId(concepts, conceptParam)
   const selectedConcept = concepts.find((c) => c.id === selectedId) ?? null
-  const selectConcept = (id: number) => setConceptParam(String(id))
+  const selectConcept = (id) => setConceptParam(String(id))
 
   /** Shows an attempt and keeps the history list in sync with it. */
   const showEvaluation = useCallback(
-    (e: Evaluation) => {
+    (e) => {
       setCurrent(e)
       setAttemptParam(String(e.id))
       setHistory((list) => (list.some((x) => x.id === e.id) ? list.map((x) => (x.id === e.id ? e : x)) : [e, ...list]))

@@ -1,8 +1,7 @@
-import type { Evaluation } from '../types'
 import { conceptTitle, formatDate, gradeTone } from '../lib/display'
 
 /** Past attempts, newest first; selecting one opens it without reloading the page. */
-export function History({ items, currentId, onOpen }: { items: Evaluation[]; currentId: number | null; onOpen: (e: Evaluation) => void }) {
+export function History({ items, currentId, onOpen }) {
   const sorted = [...items].sort((a, b) => b.id - a.id)
   if (sorted.length === 0) return <p className="muted small">No attempts yet. Your past attempts will appear here.</p>
   return (

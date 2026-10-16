@@ -9,7 +9,7 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS
  * Circular 0–100 score. The arc is drawn at its final value and a CSS animation fills it
  * from empty, so it is always correct even when animation frames are paused (background tab).
  */
-export function ScoreRing({ value, label }: { value: number | null; label: string }) {
+export function ScoreRing({ value, label }) {
   // useId can contain characters (e.g. ':' or '«') that break url(#…) references in SVG
   const gradientId = `ring-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
   const fraction = Math.max(0, Math.min(100, value ?? 0)) / 100
@@ -28,7 +28,7 @@ export function ScoreRing({ value, label }: { value: number | null; label: strin
         <circle
           key={value ?? 'none'}
           className="ring-arc"
-          style={{ '--circumference': CIRCUMFERENCE } as React.CSSProperties}
+          style={{ '--circumference': CIRCUMFERENCE } }
           cx={SIZE / 2}
           cy={SIZE / 2}
           r={RADIUS}

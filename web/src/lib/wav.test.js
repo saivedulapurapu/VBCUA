@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { encodeWav, TARGET_SAMPLE_RATE } from './wav'
 
-async function bytes(blob: Blob): Promise<DataView> {
+async function bytes(blob) {
   return new DataView(await blob.arrayBuffer())
 }
 
-const text = (view: DataView, offset: number, length: number) =>
+const text = (view, offset, length) =>
   String.fromCharCode(...Array.from({ length }, (_, i) => view.getUint8(offset + i)))
 
 describe('encodeWav', () => {

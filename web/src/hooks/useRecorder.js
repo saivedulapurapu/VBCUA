@@ -1,32 +1,32 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toWav16k } from '../lib/wav'
 
-export type RecorderState = 'idle' | 'recording' | 'processing' | 'recorded' | 'error'
+ 
 
-export interface Recording {
-  blob: Blob
-  filename: string
-  url: string
-  seconds: number
-}
+
+
+
+
+
+
 
 /**
  * Microphone recording with a live level analyser for the waveform.
  * The result is converted to 16 kHz mono WAV (falls back to the original if conversion fails).
  */
 export function useRecorder() {
-  const [state, setState] = useState<RecorderState>('idle')
+  const [state, setState] = useState('idle')
   const [seconds, setSeconds] = useState(0)
-  const [recording, setRecording] = useState<Recording | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [analyser, setAnalyser] = useState<AnalyserNode | null>(null)
+  const [recording, setRecording] = useState(null)
+  const [error, setError] = useState(null)
+  const [analyser, setAnalyser] = useState(null)
 
-  const mediaRecorder = useRef<MediaRecorder | null>(null)
-  const stream = useRef<MediaStream | null>(null)
-  const audioContext = useRef<AudioContext | null>(null)
-  const chunks = useRef<Blob[]>([])
+  const mediaRecorder = useRef(null)
+  const stream = useRef(null)
+  const audioContext = useRef(null)
+  const chunks = useRef([])
   const startedAt = useRef(0)
-  const timer = useRef<number | null>(null)
+  const timer = useRef(null)
 
   const cleanupStream = useCallback(() => {
     if (timer.current !== null) window.clearInterval(timer.current)

@@ -1,48 +1,46 @@
-import type { Concept, Evaluation } from '../types'
-
 /** Formatting and derived values for an attempt. Only reads stored backend values; never re-scores. */
 
-export type KeywordStatus = 'found' | 'missing' | 'not-recorded' | 'plain'
+ 
 
-export function fmt(value: number | null | undefined, digits = 1, suffix = ''): string {
+export function fmt(value, digits = 1, suffix = '') {
   if (value === null || value === undefined || Number.isNaN(value)) return 'n/a'
   return `${value.toFixed(digits)}${suffix}`
 }
 
-export function conceptTitle(e: Pick<Evaluation, 'concept' | 'concept_id'>): string {
+export function conceptTitle(e) {
   return e.concept?.title || `Concept #${e.concept_id}`
 }
 
-export function pauseRatio(e: Evaluation): number | null {
+export function pauseRatio(e) {
   return e.pause_ratio_v1 ?? e.pause_ratio ?? null
 }
 
-export function keywordBadges(e: Evaluation): Array<{ keyword: string; status: KeywordStatus }> {
+export function keywordBadges(e) {
   if (e.mentioned_keywords && e.missing_keywords) {
     return [
-      ...e.mentioned_keywords.map((keyword) => ({ keyword, status: 'found' as const })),
-      ...e.missing_keywords.map((keyword) => ({ keyword, status: 'missing' as const })),
+      ...e.mentioned_keywords.map((keyword) => ({ keyword, status: 'found'  })),
+      ...e.missing_keywords.map((keyword) => ({ keyword, status: 'missing'  })),
     ]
   }
-  return (e.concept?.keywords ?? []).map((keyword) => ({ keyword, status: 'not-recorded' as const }))
+  return (e.concept?.keywords ?? []).map((keyword) => ({ keyword, status: 'not-recorded'  }))
 }
 
-export type GradeTone = 'strong' | 'moderate' | 'poor'
+ 
 
-export function gradeTone(grade: string): GradeTone {
+export function gradeTone(grade) {
   if (grade.includes('Strong')) return 'strong'
   if (grade.includes('Moderate')) return 'moderate'
   return 'poor'
 }
 
-export interface ScoreCard {
-  label: string
-  value: number | null
-  caption: string
-  help: string
-}
 
-export function scoreCards(e: Evaluation): ScoreCard[] {
+
+
+
+
+
+
+export function scoreCards(e) {
   const pause = pauseRatio(e)
   return [
     {
@@ -66,7 +64,7 @@ export function scoreCards(e: Evaluation): ScoreCard[] {
   ]
 }
 
-export function detailsRows(e: Evaluation): Array<{ measure: string; value: string; note: string }> {
+export function detailsRows(e) {
   return [
     { measure: 'Semantic similarity', value: fmt(e.semantic_score), note: 'max(0, cosine) × 100' },
     { measure: 'Cosine similarity', value: fmt(e.cosine_similarity, 3), note: 'Sentence-BERT, all-MiniLM-L6-v2' },
@@ -86,7 +84,7 @@ export function detailsRows(e: Evaluation): Array<{ measure: string; value: stri
 }
 
 /** Raw delivery measures (not scored); older attempts show n/a. */
-export function deliveryRows(e: Evaluation): Array<{ measure: string; value: string }> {
+export function deliveryRows(e) {
   return [
     { measure: 'Speaking rate', value: fmt(e.speaking_rate_wpm, 0, ' words/min') },
     { measure: 'Long pauses (1 s or more)', value: e.long_pause_count == null ? 'n/a' : String(e.long_pause_count) },
@@ -95,11 +93,11 @@ export function deliveryRows(e: Evaluation): Array<{ measure: string; value: str
   ]
 }
 
-export function feedbackInProgress(e: Evaluation): boolean {
+export function feedbackInProgress(e) {
   return e.feedback_source !== 'llm' && (e.feedback_status === 'pending' || e.feedback_status === 'generating')
 }
 
-export function feedbackNotice(e: Evaluation): string | null {
+export function feedbackNotice(e) {
   if (e.feedback_source !== 'rule-based' || feedbackInProgress(e)) return null
   if (e.feedback_status === 'failed') {
     return 'AI feedback could not be generated (the AI service was busy or unavailable), so this feedback was produced by the built-in rule-based generator.'
@@ -111,7 +109,7 @@ export function feedbackNotice(e: Evaluation): string | null {
 }
 
 /** Any markdown heading (#…######) becomes a small "####" heading so it fits the results card. */
-export function demoteHeadings(markdown: string): string {
+export function demoteHeadings(markdown) {
   return markdown
     .split('\n')
     .map((line) => {
@@ -121,32 +119,32 @@ export function demoteHeadings(markdown: string): string {
     .join('\n')
 }
 
-export function formatDate(iso: string): string {
+export function formatDate(iso) {
   return iso ? iso.slice(0, 16).replace('T', ' ') : ''
 }
 
 /** AI-generated topics are practice extras: never the default and not part of "Surprise me". */
-export const isPracticeTopic = (c: Concept) => c.source === 'ai-generated'
+export const isPracticeTopic = (c) => c.source === 'ai-generated'
 
 /**
  * Concept to preselect: the URL's ?concept=<id> if it exists, else the first library or custom
  * concept (an AI-generated topic is only selected when the URL asks for it).
  */
-export function initialConceptId(concepts: Concept[], requested: string | null): number | null {
+export function initialConceptId(concepts, requested) {
   const wanted = requested !== null && /^\d+$/.test(requested) ? Number(requested) : null
   if (wanted !== null && concepts.some((c) => c.id === wanted)) return wanted
   return (concepts.find((c) => !isPracticeTopic(c)) ?? concepts[0])?.id ?? null
 }
 
 /** Picks a random library or custom concept, avoiding the current one when there is a choice. */
-export function randomConcept(concepts: Concept[], currentId: number | null, random = Math.random): Concept | null {
+export function randomConcept(concepts, currentId, random = Math.random) {
   const eligible = concepts.filter((c) => !isPracticeTopic(c))
   const pool = eligible.length > 1 ? eligible.filter((c) => c.id !== currentId) : eligible
   if (pool.length === 0) return null
   return pool[Math.floor(random() * pool.length)]
 }
 
-export function formatClock(seconds: number): string {
+export function formatClock(seconds) {
   const s = Math.max(0, Math.floor(seconds))
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }

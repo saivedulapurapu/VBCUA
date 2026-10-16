@@ -6,12 +6,12 @@
 export const TARGET_SAMPLE_RATE = 16_000
 
 /** Encodes mono float samples in [-1, 1] as a 16-bit PCM WAV file. */
-export function encodeWav(samples: Float32Array, sampleRate: number): Blob {
+export function encodeWav(samples, sampleRate) {
   const bytesPerSample = 2
   const dataSize = samples.length * bytesPerSample
   const buffer = new ArrayBuffer(44 + dataSize)
   const view = new DataView(buffer)
-  const writeString = (offset: number, text: string) => {
+  const writeString = (offset, text) => {
     for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i))
   }
   writeString(0, 'RIFF')
@@ -36,10 +36,10 @@ export function encodeWav(samples: Float32Array, sampleRate: number): Blob {
 }
 
 /** Decodes any browser-supported audio, downmixes to mono and resamples to 16 kHz. */
-export async function toWav16k(input: Blob): Promise<Blob> {
+export async function toWav16k(input) {
   const arrayBuffer = await input.arrayBuffer()
   const decodeContext = new AudioContext()
-  let decoded: AudioBuffer
+  let decoded
   try {
     decoded = await decodeContext.decodeAudioData(arrayBuffer)
   } finally {

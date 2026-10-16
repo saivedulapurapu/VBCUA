@@ -32,9 +32,9 @@ describe('App', () => {
 
   it('analyses, shows scores first, then the AI feedback', async () => {
     const scored = attempt({ id: 11, concept_id: 3, concept: CONCEPTS[2], feedback_source: 'rule-based', feedback_status: 'pending', feedback: 'rule text' })
-    const withFeedback = { ...scored, feedback_source: 'llm' as const, feedback_status: 'done' as const, feedback: 'AI says hello' }
+    const withFeedback = { ...scored, feedback_source: 'llm' , feedback_status: 'done' , feedback: 'AI says hello' }
     const evaluate = vi.spyOn(api, 'evaluate').mockResolvedValue(scored)
-    let release: () => void = () => {}
+    let release = () => {}
     const request = vi.spyOn(api, 'requestFeedback').mockImplementation(
       () => new Promise((r) => { release = () => r(withFeedback) }),
     )
