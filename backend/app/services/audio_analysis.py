@@ -56,12 +56,6 @@ def count_words(transcript: str) -> int:
     return len(re.sub(r"[^\w\s']", ' ', transcript.lower()).split())
 
 
-def measure_delivery(audio_path: str, transcript: str) -> Dict[str, Optional[float]]:
-    """Delivery measures for a stored recording; used to backfill attempts saved before they existed."""
-    y, sr = librosa.load(audio_path, sr=None)
-    return compute_delivery_measures(librosa.effects.split(y, top_db=SILENCE_TOP_DB), sr, count_words(transcript))
-
-
 def compute_pause_ratios(non_silent_intervals: Any, total_samples: int) -> Tuple[float, float]:
     """
     Returns (pause_ratio_b0, pause_ratio_v1) from librosa.effects.split intervals.
