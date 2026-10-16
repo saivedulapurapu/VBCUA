@@ -29,7 +29,7 @@ VBCUA is an AI-powered web application designed to evaluate how effectively user
 3. **Web app** (React + TypeScript + Vite, served by the backend)
    - Glassmorphism design in light and dark, following the system setting unless you pick one.
    - **Trending today**: topics in today's news (any area, not only tech) found by Gemini with Google Search grounding, cached once per day, with source links and Google's search suggestions. If grounding is unavailable (no key or quota), a curated list is shown as "Suggested topics".
-   - **Any topic**: type anything; Gemini writes a reference definition and key terms, saved as a concept marked *AI-generated reference* (practice only: research analysis uses the curated library concepts, see the `source` column).
+   - **Any topic**: type anything; Gemini writes a reference definition and key terms, saved as a concept marked *AI-generated reference* (for practice; the `source` column records where each concept came from).
    - Three steps: choose a topic (searchable, or **Surprise me** for a random one), record in the browser with a live waveform or upload a file, review the results. The selected concept and the open attempt are kept in the URL, so a page reload keeps them.
    - Scores appear as soon as the analysis finishes; AI feedback follows a few seconds later ("Writing feedback…").
    - Results: overall, understanding and fluency score rings with short explanations, and tabs for feedback, keywords, transcript and every stored sub-score.

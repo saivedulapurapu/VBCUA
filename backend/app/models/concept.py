@@ -9,7 +9,7 @@ class ReferenceConcept(Base):
     title = Column(String(100), unique=True, nullable=False, index=True)
     keywords = Column(JSON, nullable=False)  # List of essential terms (e.g. ["supervised", "neural networks"])
     description = Column(Text, nullable=False)  # Detailed reference text
-    # Where the concept came from: "library" (curated, used for research), "custom" (added by a user)
+    # Where the concept came from: "library" (curated), "custom" (added by a user)
     # or "ai-generated" (reference written by Gemini for a trending or typed-in topic). NULL = older row.
     source = Column(String(20), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

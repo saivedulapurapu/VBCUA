@@ -42,7 +42,7 @@ The functional, performance and user acceptance test reports (12-06-2026) do not
 
 ## Scoring and pipeline changes (October 2026)
 
-Changes made on branch `research/week1-fixes`. The original formulas remain available as baseline `B0` (`method="b0"`) for comparison.
+Changes made in October 2026 (merged into `main`). The original formulas remain available as baseline `B0` (`method="b0"`) for comparison.
 
 | Area | Change | Commit |
 |---|---|---|
